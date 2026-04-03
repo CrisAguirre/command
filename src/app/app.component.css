@@ -61,13 +61,30 @@
   transform: rotateX(12deg) rotateY(-15deg);
   transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
   cursor: pointer;
+  animation: float3d 6s ease-in-out infinite;
+}
+
+/* Stagger each panel so they float out of sync */
+.panel-wrapper:nth-child(1) .box { animation-delay: 0s; }
+.panel-wrapper:nth-child(2) .box { animation-delay: -1.5s; }
+.panel-wrapper:nth-child(3) .box { animation-delay: -3s; }
+.panel-wrapper:nth-child(4) .box { animation-delay: -4.5s; }
+
+@keyframes float3d {
+  0%   { transform: rotateX(12deg) rotateY(-15deg) translateY(0px); }
+  25%  { transform: rotateX(8deg)  rotateY(-8deg)  translateY(-6px); }
+  50%  { transform: rotateX(14deg) rotateY(-18deg) translateY(0px); }
+  75%  { transform: rotateX(10deg) rotateY(-12deg) translateY(4px); }
+  100% { transform: rotateX(12deg) rotateY(-15deg) translateY(0px); }
 }
 
 .box:hover:not(.is-active) {
+  animation-play-state: paused;
   transform: rotateX(8deg) rotateY(-8deg) scale(1.04);
 }
 
 .box.is-active {
+  animation: none;
   transform: rotateX(-10deg) rotateY(0deg) scale(1.06);
 }
 
