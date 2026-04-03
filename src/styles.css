@@ -1,1 +1,17 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@700&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #050505;
+  background-image: radial-gradient(circle at center, #1a1a2e 0%, #050505 100%);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}

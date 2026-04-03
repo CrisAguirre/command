@@ -1,0 +1,48 @@
+[
+  {
+    "id": "talkytimes",
+    "name": "Talkytimes",
+    "color": "#10b981",
+    "colorRgb": "16, 185, 129",
+    "icon": "💬",
+    "todos": [
+      "1. Reunion dudas",
+      "2. Repasar tareas",
+      "3. Editar datos sencibles"
+    ]
+  },
+  {
+    "id": "fretzia",
+    "name": "Fretzia",
+    "color": "#10b981",
+    "colorRgb": "16, 185, 129",
+    "icon": "🎂",
+    "todos": [
+      "1. Crear Video con Gooogle IA",
+      "2. Alimentar redes sociales",
+      "3. confgurar tienda en whatsapp y facebook"
+    ]
+  },
+  {
+    "id": "freelance",
+    "name": "Freelance",
+    "color": "#10b981",
+    "colorRgb": "16, 185, 129",
+    "icon": "💼",
+    "todos": [
+      "1. Montaje de fotos IA",
+      "2. Capacitacion IA"
+    ]
+  },
+  {
+    "id": "springbooth",
+    "name": "Springbooth",
+    "color": "#10b981",
+    "colorRgb": "16, 185, 129",
+    "icon": "🖥️",
+    "todos": [
+      "1. Revisar proyecto GVS",
+      "2. Desarrollar otros cuestionarios"
+    ]
+  }
+]
