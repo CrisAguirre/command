@@ -30,7 +30,7 @@
 </header>
 
 <!-- 3D Cube Scene -->
-<div class="dashboard scene-3d" *ngIf="loaded">
+<div class="dashboard scene-3d" *ngIf="loaded" [class.panel-open]="hasActivePanel()">
   <div class="cube-wrapper"
        (mousedown)="onPointerDown($event)"
        (touchstart)="onPointerDown($event)"
@@ -41,7 +41,7 @@
     
     <div class="cube"
          [class.is-dragging]="isDragging"
-         [style.transform]="'rotateY(' + currentRotation + 'deg)'">
+         [style.--rot-y]="currentRotation + 'deg'">
          
       <!-- Render the 4 project panels on the 4 cube faces -->
       <div *ngFor="let panel of panels; let i = index"
@@ -70,49 +70,48 @@
   <div class="floor-reflection"
        [style.--theme-color]="activePanel.color"
        [style.opacity]="isDragging ? 0.05 : 0.2"></div>
-</div>
+  <!-- Side Task Panel (slides out from the side) -->
+  <ng-container *ngFor="let panel of panels; let pIndex = index">
+    <div class="side-task-wrapper" 
+         *ngIf="panel.active"
+         [style.--theme-color]="panel.color"
+         [style.--theme-rgb]="panel.colorRgb">
+      
+      <div class="task-card" (click)="stopProp($event)">
+        <div class="task-card-header">
+          <span class="task-card-icon">{{ panel.icon }}</span>
+          <h3>{{ panel.name }}</h3>
+          <button class="btn-close" (click)="togglePanel(panel)">✕</button>
+        </div>
 
-<!-- Floating Task Panel (appears when a panel is active) -->
-<ng-container *ngFor="let panel of panels; let pIndex = index">
-  <div class="task-overlay" 
-       *ngIf="panel.active"
-       [style.--theme-color]="panel.color"
-       [style.--theme-rgb]="panel.colorRgb">
-    
-    <div class="task-card" (click)="stopProp($event)">
-      <div class="task-card-header">
-        <span class="task-card-icon">{{ panel.icon }}</span>
-        <h3>{{ panel.name }}</h3>
-        <button class="btn-close" (click)="togglePanel(panel)">✕</button>
+        <div class="tasks-scroll">
+          <ul class="task-list">
+            <li *ngFor="let task of panel.todos; let tIndex = index" class="task-item">
+              <!-- View mode -->
+              <ng-container *ngIf="panel.editingIndex !== tIndex">
+                <span class="task-checkbox" (click)="removeTask(panel, tIndex, $event)" title="Completar/Eliminar">✓</span>
+                <span class="task-text" (dblclick)="startEditing(panel, tIndex)">{{ task }}</span>
+                <button class="btn-edit" (click)="startEditing(panel, tIndex)" title="Editar">✏️</button>
+              </ng-container>
+
+              <!-- Edit mode -->
+              <ng-container *ngIf="panel.editingIndex === tIndex">
+                <input class="edit-input"
+                       [(ngModel)]="panel.editValue"
+                       (keydown.enter)="confirmEdit(panel)"
+                       (keydown.escape)="cancelEdit(panel)"
+                       (blur)="confirmEdit(panel)" />
+              </ng-container>
+            </li>
+          </ul>
+        </div>
+
+        <button class="btn-add" (click)="addTask(panel)">+ Agregar tarea</button>
       </div>
 
-      <div class="tasks-scroll">
-        <ul class="task-list">
-          <li *ngFor="let task of panel.todos; let tIndex = index" class="task-item">
-            <!-- View mode -->
-            <ng-container *ngIf="panel.editingIndex !== tIndex">
-              <span class="task-checkbox" (click)="removeTask(panel, tIndex, $event)" title="Completar/Eliminar">✓</span>
-              <span class="task-text" (dblclick)="startEditing(panel, tIndex)">{{ task }}</span>
-              <button class="btn-edit" (click)="startEditing(panel, tIndex)" title="Editar">✏️</button>
-            </ng-container>
-
-            <!-- Edit mode -->
-            <ng-container *ngIf="panel.editingIndex === tIndex">
-              <input class="edit-input"
-                     [(ngModel)]="panel.editValue"
-                     (keydown.enter)="confirmEdit(panel)"
-                     (keydown.escape)="cancelEdit(panel)"
-                     (blur)="confirmEdit(panel)" />
-            </ng-container>
-          </li>
-        </ul>
-      </div>
-
-      <button class="btn-add" (click)="addTask(panel)">+ Agregar tarea</button>
     </div>
-
-  </div>
-</ng-container>
+  </ng-container>
+</div>
 
 <!-- Dashboard Footer -->
 <footer class="site-footer">

@@ -38,6 +38,10 @@ export class AppComponent implements OnInit {
     return this.panels[this.activeFaceIndex] || this.panels[0];
   }
 
+  hasActivePanel(): boolean {
+    return this.panels.some(p => p.active);
+  }
+
   // Login state
   isLoggedIn = false;
   loginUsername = '';
@@ -156,7 +160,7 @@ export class AppComponent implements OnInit {
   }
 
   updateActiveFace() {
-    let angle = this.currentRotation % 360;
+    let angle = Math.round(this.currentRotation) % 360;
     if (angle <= -180) angle += 360;
     if (angle > 180) angle -= 360;
     
@@ -186,11 +190,9 @@ export class AppComponent implements OnInit {
     // If we just dragged, ignore
     if (Math.abs(this.currentRotation - this.startRotation) > 5) return;
 
-    if (this.activeFaceIndex === index) {
-      this.togglePanel(panel);
-    } else {
-      this.rotateToFace(index);
-    }
+    // Regardless of rotation, if they click a face, make it active and rotate to it
+    this.rotateToFace(index);
+    this.togglePanel(panel);
   }
 
   rotateToFace(index: number) {
