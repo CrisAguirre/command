@@ -29,44 +29,47 @@
   <h1 class="site-title">⚡ Command Center</h1>
 </header>
 
-<!-- Panels Grid -->
-<div class="dashboard" *ngIf="loaded">
-
-  <div class="panel-wrapper"
-       *ngFor="let panel of panels; let pIndex = index"
-       [style.--theme-color]="panel.color"
-       [style.--theme-rgb]="panel.colorRgb">
-
-    <!-- 3D Box -->
-    <div class="box" [class.is-active]="panel.active" (click)="togglePanel(panel)">
-
-      <!-- Front face -->
-      <div class="face front">
-        <div class="front-content">
+<!-- 3D Cube Scene -->
+<div class="dashboard scene-3d" *ngIf="loaded">
+  <div class="cube-wrapper"
+       (mousedown)="onPointerDown($event)"
+       (touchstart)="onPointerDown($event)"
+       (window:mousemove)="onPointerMove($event)"
+       (window:touchmove)="onPointerMove($event)"
+       (window:mouseup)="onPointerUp()"
+       (window:touchend)="onPointerUp()">
+    
+    <div class="cube"
+         [class.is-dragging]="isDragging"
+         [style.transform]="'rotateY(' + currentRotation + 'deg)'">
+         
+      <!-- Render the 4 project panels on the 4 cube faces -->
+      <div *ngFor="let panel of panels; let i = index"
+           class="cube-face"
+           [class]="getFaceClass(i)"
+           (click)="onFaceClick(panel, i)"
+           [style.--theme-color]="panel.color"
+           [style.--theme-rgb]="panel.colorRgb">
+           
+        <div class="face-content">
           <span class="panel-icon">{{ panel.icon }}</span>
           <h2>{{ panel.name }}</h2>
           <div class="indicator"></div>
           <span class="task-count">{{ panel.todos.length }} tareas</span>
         </div>
       </div>
-
-      <!-- Other faces -->
-      <div class="face back"></div>
-      <div class="face face-left"></div>
-      <div class="face face-right"></div>
-      <div class="face face-bottom"></div>
-
-      <!-- Lid (hinged top) -->
-      <div class="lid-hinge">
-        <div class="face face-top"></div>
-      </div>
-
-      <!-- Floor glow -->
-      <div class="floor-reflection"></div>
+      
+      <!-- Top and Bottom caps -->
+      <div class="cube-face face-top" [style.--theme-color]="activePanel.color"></div>
+      <div class="cube-face face-bottom" [style.--theme-color]="activePanel.color"></div>
     </div>
-
+    
   </div>
-
+  
+  <!-- Floor Reflection mapping active face -->
+  <div class="floor-reflection"
+       [style.--theme-color]="activePanel.color"
+       [style.opacity]="isDragging ? 0.05 : 0.2"></div>
 </div>
 
 <!-- Floating Task Panel (appears when a panel is active) -->

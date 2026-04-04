@@ -27,6 +27,17 @@ export class AppComponent implements OnInit {
   panels: PanelState[] = [];
   loaded = false;
 
+  // Cube state
+  currentRotation = 0;
+  isDragging = false;
+  startX = 0;
+  startRotation = 0;
+  activeFaceIndex = 0;
+
+  get activePanel(): PanelState {
+    return this.panels[this.activeFaceIndex] || this.panels[0];
+  }
+
   // Login state
   isLoggedIn = false;
   loginUsername = '';
@@ -104,6 +115,101 @@ export class AppComponent implements OnInit {
       });
       panel.active = true;
     }
+  }
+
+  // --- Cube Interaction ---
+  onPointerDown(e: MouseEvent | TouchEvent) {
+    const target = e.target as HTMLElement;
+    if (target.closest('.task-overlay') || target.closest('.site-header') || target.closest('.btn-logout')) return;
+    this.isDragging = true;
+    this.startX = this.getClientX(e);
+    this.startRotation = this.currentRotation;
+  }
+
+  onPointerMove(e: MouseEvent | TouchEvent) {
+    if (!this.isDragging) return;
+    const x = this.getClientX(e);
+    const deltaX = x - this.startX;
+    // Adjust speed here
+    this.currentRotation = this.startRotation + deltaX * 0.4;
+  }
+
+  onPointerUp() {
+    if (!this.isDragging) return;
+    this.isDragging = false;
+    // Snap to nearest 90 degrees
+    const snapAngle = Math.round(this.currentRotation / 90) * 90;
+    this.currentRotation = snapAngle;
+    this.updateActiveFace();
+  }
+
+  getClientX(e: MouseEvent | TouchEvent): number {
+    if (e instanceof MouseEvent) {
+      return e.clientX;
+    }
+    // Only return defined if it's a TouchEvent with touches
+    if (e.touches && e.touches.length > 0) {
+      return e.touches[0].clientX;
+    }
+    // Fallback for touchend
+    return e.changedTouches ? e.changedTouches[0].clientX : 0;
+  }
+
+  updateActiveFace() {
+    let angle = this.currentRotation % 360;
+    if (angle <= -180) angle += 360;
+    if (angle > 180) angle -= 360;
+    
+    // angle ranges from -180 to ~180.
+    // 0 = front (0)
+    // -90 = right (1)
+    // -180 or 180 = back (2)
+    // 90 = left (3)
+    
+    if (angle === 0) this.activeFaceIndex = 0;
+    else if (angle === -90) this.activeFaceIndex = 1;
+    else if (Math.abs(angle) === 180) this.activeFaceIndex = 2;
+    else if (angle === 90) this.activeFaceIndex = 3;
+  }
+
+  getFaceClass(index: number): string {
+    switch(index) {
+      case 0: return 'face-front';
+      case 1: return 'face-right';
+      case 2: return 'face-back';
+      case 3: return 'face-left';
+      default: return '';
+    }
+  }
+
+  onFaceClick(panel: PanelState, index: number) {
+    // If we just dragged, ignore
+    if (Math.abs(this.currentRotation - this.startRotation) > 5) return;
+
+    if (this.activeFaceIndex === index) {
+      this.togglePanel(panel);
+    } else {
+      this.rotateToFace(index);
+    }
+  }
+
+  rotateToFace(index: number) {
+    let targetAngle = 0;
+    switch(index) {
+      case 0: targetAngle = 0; break;
+      case 1: targetAngle = -90; break;
+      case 2: targetAngle = -180; break;
+      case 3: targetAngle = -270; break;
+    }
+    
+    const curMod = this.currentRotation % 360;
+    let diff = targetAngle - curMod;
+    
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    
+    this.currentRotation += diff;
+    this.updateActiveFace();
   }
 
   // --- Editing tasks ---
