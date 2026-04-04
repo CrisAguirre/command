@@ -1,0 +1,68 @@
+[
+  {
+    "id": "estudio",
+    "name": "Estudio",
+    "color": "#3b82f6",
+    "colorRgb": "59, 130, 246",
+    "icon": "📚",
+    "todos": [
+      "1. Repasar material de clase",
+      "2. Hacer resúmenes"
+    ]
+  },
+  {
+    "id": "buscar-trabajo",
+    "name": "Buscar Trabajo",
+    "color": "#f59e0b",
+    "colorRgb": "245, 158, 11",
+    "icon": "🔍",
+    "todos": [
+      "1. Actualizar CV",
+      "2. Buscar vacantes"
+    ]
+  },
+  {
+    "id": "tesis",
+    "name": "Tesis",
+    "color": "#8b5cf6",
+    "colorRgb": "139, 92, 246",
+    "icon": "📝",
+    "todos": [
+      "1. Revisión de capítulo 1",
+      "2. Consultar con asesor"
+    ]
+  },
+  {
+    "id": "deudas",
+    "name": "Deudas",
+    "color": "#ef4444",
+    "colorRgb": "239, 68, 68",
+    "icon": "💰",
+    "todos": [
+      "1. Revisar estado de cuenta",
+      "2. Planificar pagos"
+    ]
+  },
+  {
+    "id": "ejercicio",
+    "name": "Ejercicio",
+    "color": "#10b981",
+    "colorRgb": "16, 185, 129",
+    "icon": "💪",
+    "todos": [
+      "1. Rutina de cardio",
+      "2. Rutina de fuerza"
+    ]
+  },
+  {
+    "id": "alimentacion",
+    "name": "Alimentación",
+    "color": "#ec4899",
+    "colorRgb": "236, 72, 153",
+    "icon": "🥗",
+    "todos": [
+      "1. Planificar menú semanal",
+      "2. Comprar ingredientes"
+    ]
+  }
+]

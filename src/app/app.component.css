@@ -1,6 +1,6 @@
 /* ===================================================
-   COMMAND CENTER — 3D PANELS + OVERLAY TASK CARD
-   Fully responsive, mobile-first
+   COMMAND CENTER — 3D PANELS + SIDE TASK CARD
+   Multi-user, dynamic polygon geometry
    =================================================== */
 
 :host {
@@ -24,10 +24,17 @@
   background-clip: text;
   letter-spacing: 1px;
 }
-.site-subtitle {
-  font-size: clamp(12px, 2.5vw, 15px);
-  color: #666;
-  margin: 8px 0 0;
+
+.user-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -53,12 +60,13 @@
 
 .cube-wrapper {
   position: relative;
-  width: 260px;
+  /* width and height set dynamically via style binding */
   height: 260px;
   cursor: grab;
   transform-style: preserve-3d;
   z-index: 10;
   transform: rotateX(-15deg);
+  flex-shrink: 0;
 }
 
 .cube-wrapper:active {
@@ -75,7 +83,7 @@
 }
 
 .cube.is-dragging {
-  transition: none; /* No transition while dragging */
+  transition: none;
 }
 
 /* Floating animation only when not dragging */
@@ -89,9 +97,10 @@
   100% { transform: rotateY(var(--rot-y, 0deg)) translateY(0px); }
 }
 
+/* ---------- CUBE FACES ---------- */
 .cube-face {
   position: absolute;
-  width: 260px;
+  /* width set dynamically via style binding */
   height: 260px;
   border: 1.5px solid var(--theme-color);
   background: rgba(12, 12, 18, 0.4);
@@ -104,6 +113,7 @@
   border-radius: 12px;
   transition: box-shadow 0.3s ease;
   cursor: pointer;
+  /* transform set dynamically via style binding */
 }
 
 .cube-face:hover {
@@ -111,34 +121,11 @@
               0 0 40px rgba(var(--theme-rgb), 0.2);
 }
 
-.face-front  { transform: rotateY(0deg) translateZ(130px); }
-.face-right  { transform: rotateY(90deg) translateZ(130px); }
-.face-back   { transform: rotateY(180deg) translateZ(130px); }
-.face-left   { transform: rotateY(-90deg) translateZ(130px); }
-
-.face-top {
-  height: 260px;
-  transform: rotateX(90deg) translateZ(130px);
-  background: transparent;
-  cursor: default;
-  border: none;
-  box-shadow: none;
-}
-
-.face-bottom {
-  height: 260px;
-  transform: rotateX(-90deg) translateZ(130px);
-  background: transparent;
-  cursor: default;
-  border: none;
-  box-shadow: none;
-}
-
-/* ---------- FRONT CONTENT ---------- */
+/* ---------- FACE CONTENT ---------- */
 .face-content {
   text-align: center;
   padding: 20px;
-  pointer-events: none; /* Let drag events pass through */
+  pointer-events: none;
 }
 
 .panel-icon {
@@ -150,7 +137,7 @@
 
 .face-content h2 {
   font-family: 'Outfit', sans-serif;
-  font-size: clamp(20px, 5vw, 26px);
+  font-size: clamp(16px, 4vw, 24px);
   margin: 0 0 16px;
   text-transform: uppercase;
   letter-spacing: 2px;
@@ -402,24 +389,6 @@
 .site-footer {
   text-align: center;
   padding: 20px 20px 40px;
-}
-
-.btn-reset {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.5);
-  padding: 10px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  transition: all 0.3s;
-}
-
-.btn-reset:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
 }
 
 /* ===================================================

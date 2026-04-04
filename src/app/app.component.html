@@ -27,11 +27,14 @@
 <!-- Header -->
 <header class="site-header">
   <h1 class="site-title">⚡ Command Center</h1>
+  <span class="user-badge">{{ currentUser?.username }}</span>
 </header>
 
 <!-- 3D Cube Scene -->
 <div class="dashboard scene-3d" *ngIf="loaded" [class.panel-open]="hasActivePanel()">
   <div class="cube-wrapper"
+       [style.width.px]="cubeFaceWidth"
+       [style.height.px]="260"
        (mousedown)="onPointerDown($event)"
        (touchstart)="onPointerDown($event)"
        (window:mousemove)="onPointerMove($event)"
@@ -43,11 +46,12 @@
          [class.is-dragging]="isDragging"
          [style.--rot-y]="currentRotation + 'deg'">
          
-      <!-- Render the 4 project panels on the 4 cube faces -->
+      <!-- Render project panels on polygon faces -->
       <div *ngFor="let panel of panels; let i = index"
            class="cube-face"
-           [class]="getFaceClass(i)"
            (click)="onFaceClick(panel, i)"
+           [style.transform]="getFaceTransform(i)"
+           [style.width.px]="cubeFaceWidth"
            [style.--theme-color]="panel.color"
            [style.--theme-rgb]="panel.colorRgb">
            
@@ -58,18 +62,15 @@
           <span class="task-count">{{ panel.todos.length }} tareas</span>
         </div>
       </div>
-      
-      <!-- Top and Bottom caps -->
-      <div class="cube-face face-top" [style.--theme-color]="activePanel.color"></div>
-      <div class="cube-face face-bottom" [style.--theme-color]="activePanel.color"></div>
     </div>
     
   </div>
   
-  <!-- Floor Reflection mapping active face -->
+  <!-- Floor Reflection -->
   <div class="floor-reflection"
        [style.--theme-color]="activePanel.color"
        [style.opacity]="isDragging ? 0.05 : 0.2"></div>
+
   <!-- Side Task Panel (slides out from the side) -->
   <ng-container *ngFor="let panel of panels; let pIndex = index">
     <div class="side-task-wrapper" 

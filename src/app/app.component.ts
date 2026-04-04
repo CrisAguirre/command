@@ -16,7 +16,27 @@ export interface PanelState extends PanelData {
   editValue: string;
 }
 
-const STORAGE_KEY = 'command_panels_db_v4';
+interface UserAccount {
+  username: string;
+  password: string;
+  dataFile: string;
+  storageKey: string;
+}
+
+const USERS: UserAccount[] = [
+  {
+    username: 'Noldor87',
+    password: 'Feanor1987@',
+    dataFile: 'assets/data/panels-db.json',
+    storageKey: 'command_panels_noldor87_v5'
+  },
+  {
+    username: 'Luna',
+    password: 'Keke2620',
+    dataFile: 'assets/data/panels-db-luna.json',
+    storageKey: 'command_panels_luna_v5'
+  }
+];
 
 @Component({
   selector: 'app-root',
@@ -34,6 +54,39 @@ export class AppComponent implements OnInit {
   startRotation = 0;
   activeFaceIndex = 0;
 
+  // Login state
+  isLoggedIn = false;
+  loginUsername = '';
+  loginPassword = '';
+  loginError = false;
+  currentUser: UserAccount | null = null;
+
+  constructor(private http: HttpClient) {}
+
+  ngOnInit() {}
+
+  // --- Dynamic geometry based on panel count ---
+  get faceCount(): number {
+    return this.panels.length || 4;
+  }
+
+  get faceAngle(): number {
+    return 360 / this.faceCount;
+  }
+
+  get cubeFaceWidth(): number {
+    return this.faceCount <= 4 ? 260 : 200;
+  }
+
+  get cubeTranslateZ(): number {
+    return this.cubeFaceWidth / (2 * Math.tan(Math.PI / this.faceCount));
+  }
+
+  getFaceTransform(index: number): string {
+    const angle = this.faceAngle * index;
+    return `rotateY(${angle}deg) translateZ(${this.cubeTranslateZ}px)`;
+  }
+
   get activePanel(): PanelState {
     return this.panels[this.activeFaceIndex] || this.panels[0];
   }
@@ -42,20 +95,10 @@ export class AppComponent implements OnInit {
     return this.panels.some(p => p.active);
   }
 
-  // Login state
-  isLoggedIn = false;
-  loginUsername = '';
-  loginPassword = '';
-  loginError = false;
-
-  constructor(private http: HttpClient) {}
-
-  ngOnInit() {
-    this.loadData();
-  }
-
+  // --- Data loading (per-user) ---
   loadData() {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!this.currentUser) return;
+    const saved = localStorage.getItem(this.currentUser.storageKey);
     if (saved) {
       try {
         const parsed: PanelData[] = JSON.parse(saved);
@@ -67,7 +110,7 @@ export class AppComponent implements OnInit {
         }));
         this.loaded = true;
       } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(this.currentUser.storageKey);
         this.loadFromFile();
       }
     } else {
@@ -76,7 +119,8 @@ export class AppComponent implements OnInit {
   }
 
   loadFromFile() {
-    this.http.get<PanelData[]>('assets/data/panels-db.json').subscribe({
+    if (!this.currentUser) return;
+    this.http.get<PanelData[]>(this.currentUser.dataFile).subscribe({
       next: (data) => {
         this.panels = data.map(p => ({
           ...p,
@@ -88,14 +132,14 @@ export class AppComponent implements OnInit {
         this.loaded = true;
       },
       error: () => {
-        console.error('No se pudo cargar panels-db.json');
+        console.error('No se pudo cargar el archivo de datos');
         this.loaded = true;
       }
     });
   }
 
   saveData() {
-    // Only persist the data fields, not UI state
+    if (!this.currentUser) return;
     const toSave: PanelData[] = this.panels.map(p => ({
       id: p.id,
       name: p.name,
@@ -104,7 +148,7 @@ export class AppComponent implements OnInit {
       icon: p.icon,
       todos: [...p.todos]
     }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    localStorage.setItem(this.currentUser.storageKey, JSON.stringify(toSave));
   }
 
   togglePanel(panel: PanelState) {
@@ -112,7 +156,6 @@ export class AppComponent implements OnInit {
       panel.active = false;
       panel.editingIndex = null;
     } else {
-      // Close all others first
       this.panels.forEach(p => {
         p.active = false;
         p.editingIndex = null;
@@ -124,7 +167,7 @@ export class AppComponent implements OnInit {
   // --- Cube Interaction ---
   onPointerDown(e: MouseEvent | TouchEvent) {
     const target = e.target as HTMLElement;
-    if (target.closest('.task-overlay') || target.closest('.site-header') || target.closest('.btn-logout')) return;
+    if (target.closest('.side-task-wrapper') || target.closest('.site-header') || target.closest('.btn-logout')) return;
     this.isDragging = true;
     this.startX = this.getClientX(e);
     this.startRotation = this.currentRotation;
@@ -134,15 +177,14 @@ export class AppComponent implements OnInit {
     if (!this.isDragging) return;
     const x = this.getClientX(e);
     const deltaX = x - this.startX;
-    // Adjust speed here
     this.currentRotation = this.startRotation + deltaX * 0.4;
   }
 
   onPointerUp() {
     if (!this.isDragging) return;
     this.isDragging = false;
-    // Snap to nearest 90 degrees
-    const snapAngle = Math.round(this.currentRotation / 90) * 90;
+    // Snap to nearest face angle
+    const snapAngle = Math.round(this.currentRotation / this.faceAngle) * this.faceAngle;
     this.currentRotation = snapAngle;
     this.updateActiveFace();
   }
@@ -151,65 +193,37 @@ export class AppComponent implements OnInit {
     if (e instanceof MouseEvent) {
       return e.clientX;
     }
-    // Only return defined if it's a TouchEvent with touches
     if (e.touches && e.touches.length > 0) {
       return e.touches[0].clientX;
     }
-    // Fallback for touchend
     return e.changedTouches ? e.changedTouches[0].clientX : 0;
   }
 
   updateActiveFace() {
-    let angle = Math.round(this.currentRotation) % 360;
-    if (angle <= -180) angle += 360;
-    if (angle > 180) angle -= 360;
-    
-    // angle ranges from -180 to ~180.
-    // 0 = front (0)
-    // -90 = right (1)
-    // -180 or 180 = back (2)
-    // 90 = left (3)
-    
-    if (angle === 0) this.activeFaceIndex = 0;
-    else if (angle === -90) this.activeFaceIndex = 1;
-    else if (Math.abs(angle) === 180) this.activeFaceIndex = 2;
-    else if (angle === 90) this.activeFaceIndex = 3;
-  }
-
-  getFaceClass(index: number): string {
-    switch(index) {
-      case 0: return 'face-front';
-      case 1: return 'face-right';
-      case 2: return 'face-back';
-      case 3: return 'face-left';
-      default: return '';
-    }
+    let normalizedRotation = Math.round(this.currentRotation) % 360;
+    if (normalizedRotation > 0) normalizedRotation -= 360;
+    // normalizedRotation is now between -359 and 0
+    let faceIndex = Math.round(-normalizedRotation / this.faceAngle) % this.faceCount;
+    if (faceIndex < 0) faceIndex += this.faceCount;
+    if (faceIndex >= this.faceCount) faceIndex = 0;
+    this.activeFaceIndex = faceIndex;
   }
 
   onFaceClick(panel: PanelState, index: number) {
     // If we just dragged, ignore
     if (Math.abs(this.currentRotation - this.startRotation) > 5) return;
-
-    // Regardless of rotation, if they click a face, make it active and rotate to it
     this.rotateToFace(index);
     this.togglePanel(panel);
   }
 
   rotateToFace(index: number) {
-    let targetAngle = 0;
-    switch(index) {
-      case 0: targetAngle = 0; break;
-      case 1: targetAngle = -90; break;
-      case 2: targetAngle = -180; break;
-      case 3: targetAngle = -270; break;
-    }
-    
+    const targetAngle = -this.faceAngle * index;
     const curMod = this.currentRotation % 360;
     let diff = targetAngle - curMod;
-    
+
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
-    
+
     this.currentRotation += diff;
     this.updateActiveFace();
   }
@@ -237,7 +251,6 @@ export class AppComponent implements OnInit {
   addTask(panel: PanelState) {
     panel.todos.push('Nueva tarea');
     this.saveData();
-    // Immediately enter edit mode on the new task
     this.startEditing(panel, panel.todos.length - 1);
   }
 
@@ -255,15 +268,19 @@ export class AppComponent implements OnInit {
   }
 
   resetToDefaults() {
-    localStorage.removeItem(STORAGE_KEY);
+    if (!this.currentUser) return;
+    localStorage.removeItem(this.currentUser.storageKey);
     this.loadFromFile();
   }
 
   // --- Login ---
   login() {
-    if (this.loginUsername === 'Noldor87' && this.loginPassword === 'Feanor1987@') {
+    const user = USERS.find(u => u.username === this.loginUsername && u.password === this.loginPassword);
+    if (user) {
+      this.currentUser = user;
       this.isLoggedIn = true;
       this.loginError = false;
+      this.loadData();
     } else {
       this.loginError = true;
     }
@@ -273,7 +290,10 @@ export class AppComponent implements OnInit {
     this.isLoggedIn = false;
     this.loginUsername = '';
     this.loginPassword = '';
-    // Optional: could also close any open panels
-    this.panels.forEach(p => p.active = false);
+    this.currentUser = null;
+    this.panels = [];
+    this.loaded = false;
+    this.currentRotation = 0;
+    this.activeFaceIndex = 0;
   }
 }
