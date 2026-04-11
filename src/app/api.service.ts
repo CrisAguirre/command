@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../environments/environment';
 
 export interface PanelData {
   _id?: string;
@@ -25,7 +26,7 @@ export interface LoginResponse {
   providedIn: 'root'
 })
 export class ApiService {
-  private apiUrl = 'https://command-backend-production.up.railway.app/api';
+  private apiUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) { }
 
