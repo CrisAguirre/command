@@ -1,42 +1,11 @@
 import { Component, OnInit } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-
-export interface PanelData {
-  id: string;
-  name: string;
-  color: string;
-  colorRgb: string;
-  icon: string;
-  todos: string[];
-}
+import { ApiService, PanelData } from './api.service';
 
 export interface PanelState extends PanelData {
   active: boolean;
   editingIndex: number | null;
   editValue: string;
 }
-
-interface UserAccount {
-  username: string;
-  password: string;
-  dataFile: string;
-  storageKey: string;
-}
-
-const USERS: UserAccount[] = [
-  {
-    username: 'Noldor87',
-    password: 'Feanor1987@',
-    dataFile: 'assets/data/panels-db.json',
-    storageKey: 'command_panels_noldor87_v5'
-  },
-  {
-    username: 'Luna',
-    password: 'Keke2620',
-    dataFile: 'assets/data/panels-db-luna.json',
-    storageKey: 'command_panels_luna_v5'
-  }
-];
 
 @Component({
   selector: 'app-root',
@@ -59,11 +28,21 @@ export class AppComponent implements OnInit {
   loginUsername = '';
   loginPassword = '';
   loginError = false;
-  currentUser: UserAccount | null = null;
+  currentUserName = '';
 
-  constructor(private http: HttpClient) {}
+  constructor(private api: ApiService) {}
 
-  ngOnInit() {}
+  ngOnInit() {
+    // Auto-login if token exists
+    if (this.api.isAuthenticated()) {
+      const user = this.api.getStoredUser();
+      if (user) {
+        this.currentUserName = user.username;
+        this.isLoggedIn = true;
+        this.loadPanels();
+      }
+    }
+  }
 
   // --- Dynamic geometry based on panel count ---
   get faceCount(): number {
@@ -95,32 +74,9 @@ export class AppComponent implements OnInit {
     return this.panels.some(p => p.active);
   }
 
-  // --- Data loading (per-user) ---
-  loadData() {
-    if (!this.currentUser) return;
-    const saved = localStorage.getItem(this.currentUser.storageKey);
-    if (saved) {
-      try {
-        const parsed: PanelData[] = JSON.parse(saved);
-        this.panels = parsed.map(p => ({
-          ...p,
-          active: false,
-          editingIndex: null,
-          editValue: ''
-        }));
-        this.loaded = true;
-      } catch {
-        localStorage.removeItem(this.currentUser.storageKey);
-        this.loadFromFile();
-      }
-    } else {
-      this.loadFromFile();
-    }
-  }
-
-  loadFromFile() {
-    if (!this.currentUser) return;
-    this.http.get<PanelData[]>(this.currentUser.dataFile).subscribe({
+  // --- Data loading from API ---
+  loadPanels() {
+    this.api.getPanels().subscribe({
       next: (data) => {
         this.panels = data.map(p => ({
           ...p,
@@ -128,27 +84,16 @@ export class AppComponent implements OnInit {
           editingIndex: null,
           editValue: ''
         }));
-        this.saveData();
         this.loaded = true;
       },
-      error: () => {
-        console.error('No se pudo cargar el archivo de datos');
+      error: (err) => {
+        console.error('Error cargando paneles:', err);
+        if (err.status === 401) {
+          this.logout();
+        }
         this.loaded = true;
       }
     });
-  }
-
-  saveData() {
-    if (!this.currentUser) return;
-    const toSave: PanelData[] = this.panels.map(p => ({
-      id: p.id,
-      name: p.name,
-      color: p.color,
-      colorRgb: p.colorRgb,
-      icon: p.icon,
-      todos: [...p.todos]
-    }));
-    localStorage.setItem(this.currentUser.storageKey, JSON.stringify(toSave));
   }
 
   togglePanel(panel: PanelState) {
@@ -202,7 +147,6 @@ export class AppComponent implements OnInit {
   updateActiveFace() {
     let normalizedRotation = Math.round(this.currentRotation) % 360;
     if (normalizedRotation > 0) normalizedRotation -= 360;
-    // normalizedRotation is now between -359 and 0
     let faceIndex = Math.round(-normalizedRotation / this.faceAngle) % this.faceCount;
     if (faceIndex < 0) faceIndex += this.faceCount;
     if (faceIndex >= this.faceCount) faceIndex = 0;
@@ -210,7 +154,6 @@ export class AppComponent implements OnInit {
   }
 
   onFaceClick(panel: PanelState, index: number) {
-    // If we just dragged, ignore
     if (Math.abs(this.currentRotation - this.startRotation) > 5) return;
     this.rotateToFace(index);
     this.togglePanel(panel);
@@ -228,7 +171,7 @@ export class AppComponent implements OnInit {
     this.updateActiveFace();
   }
 
-  // --- Editing tasks ---
+  // --- Editing tasks (now synced with backend) ---
   startEditing(panel: PanelState, taskIndex: number) {
     panel.editingIndex = taskIndex;
     panel.editValue = panel.todos[taskIndex];
@@ -236,8 +179,19 @@ export class AppComponent implements OnInit {
 
   confirmEdit(panel: PanelState) {
     if (panel.editingIndex !== null && panel.editValue.trim()) {
-      panel.todos[panel.editingIndex] = panel.editValue.trim();
-      this.saveData();
+      const oldValue = panel.todos[panel.editingIndex];
+      const newValue = panel.editValue.trim();
+      panel.todos[panel.editingIndex] = newValue;
+
+      // Sync with backend
+      this.api.updateTask(panel._id!, panel.editingIndex, newValue).subscribe({
+        error: () => {
+          // Revert on error
+          if (panel.editingIndex !== null) {
+            panel.todos[panel.editingIndex] = oldValue;
+          }
+        }
+      });
     }
     panel.editingIndex = null;
     panel.editValue = '';
@@ -249,48 +203,66 @@ export class AppComponent implements OnInit {
   }
 
   addTask(panel: PanelState) {
-    panel.todos.push('Nueva tarea');
-    this.saveData();
-    this.startEditing(panel, panel.todos.length - 1);
+    const newTask = 'Nueva tarea';
+    this.api.addTask(panel._id!, newTask).subscribe({
+      next: (updated) => {
+        panel.todos = updated.todos;
+        this.startEditing(panel, panel.todos.length - 1);
+      },
+      error: (err) => console.error('Error agregando tarea:', err)
+    });
   }
 
   removeTask(panel: PanelState, taskIndex: number, event: Event) {
     event.stopPropagation();
+    const removedTask = panel.todos[taskIndex];
+
+    this.api.deleteTask(panel._id!, taskIndex).subscribe({
+      next: (updated) => {
+        panel.todos = updated.todos;
+        if (panel.editingIndex === taskIndex) {
+          panel.editingIndex = null;
+        }
+      },
+      error: () => {
+        // Revert on error
+        panel.todos.splice(taskIndex, 0, removedTask);
+      }
+    });
+
+    // Optimistic UI update
     panel.todos.splice(taskIndex, 1);
     if (panel.editingIndex === taskIndex) {
       panel.editingIndex = null;
     }
-    this.saveData();
   }
 
   stopProp(event: Event) {
     event.stopPropagation();
   }
 
-  resetToDefaults() {
-    if (!this.currentUser) return;
-    localStorage.removeItem(this.currentUser.storageKey);
-    this.loadFromFile();
-  }
-
   // --- Login ---
   login() {
-    const user = USERS.find(u => u.username === this.loginUsername && u.password === this.loginPassword);
-    if (user) {
-      this.currentUser = user;
-      this.isLoggedIn = true;
-      this.loginError = false;
-      this.loadData();
-    } else {
-      this.loginError = true;
-    }
+    this.api.login(this.loginUsername, this.loginPassword).subscribe({
+      next: (response) => {
+        this.api.saveSession(response);
+        this.currentUserName = response.user.username;
+        this.isLoggedIn = true;
+        this.loginError = false;
+        this.loadPanels();
+      },
+      error: () => {
+        this.loginError = true;
+      }
+    });
   }
 
   logout() {
+    this.api.clearSession();
     this.isLoggedIn = false;
     this.loginUsername = '';
     this.loginPassword = '';
-    this.currentUser = null;
+    this.currentUserName = '';
     this.panels = [];
     this.loaded = false;
     this.currentRotation = 0;
