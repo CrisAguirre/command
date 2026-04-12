@@ -17,11 +17,16 @@ export class AppComponent implements OnInit {
   loaded = false;
 
   // Cube state
-  currentRotation = 0;
+  currentRotationY = 0;
+  currentRotationX = -15; // slight tilt
   isDragging = false;
   startX = 0;
-  startRotation = 0;
+  startY = 0;
+  startRotationY = 0;
+  startRotationX = 0;
+  dragAxis: 'none' | 'horizontal' | 'vertical' = 'none';
   activeFaceIndex = 0;
+  activeFaceType: 'side' | 'top' | 'bottom' = 'side';
 
   // Login state
   isLoggedIn = false;
@@ -29,6 +34,31 @@ export class AppComponent implements OnInit {
   loginPassword = '';
   loginError = false;
   currentUserName = '';
+
+  // Add panel modal
+  showAddModal = false;
+  newPanelName = '';
+  newPanelIcon = '📋';
+  newPanelColor = '#10b981';
+  newPanelColorRgb = '16, 185, 129';
+  newPanelPosition: 'side' | 'top' | 'bottom' = 'side';
+
+  // Delete confirmation
+  showDeleteConfirm = false;
+  panelToDelete: PanelState | null = null;
+
+  // Emoji picker
+  availableIcons = ['📋', '📚', '💼', '🎯', '🔍', '📝', '💰', '💪', '🥗', '🎂', '💬', '🖥️', '🚀', '⚡', '🎮', '🎨', '🎵', '📱', '🏠', '🛒', '📊', '⏰', '🔧', '🌟', '❤️', '🧠'];
+  availableColors = [
+    { hex: '#10b981', rgb: '16, 185, 129',  name: 'Esmeralda' },
+    { hex: '#3b82f6', rgb: '59, 130, 246',  name: 'Azul' },
+    { hex: '#ef4444', rgb: '239, 68, 68',   name: 'Rojo' },
+    { hex: '#f59e0b', rgb: '245, 158, 11',  name: 'Ámbar' },
+    { hex: '#8b5cf6', rgb: '139, 92, 246',  name: 'Violeta' },
+    { hex: '#ec4899', rgb: '236, 72, 153',  name: 'Rosa' },
+    { hex: '#06b6d4', rgb: '6, 182, 212',   name: 'Cyan' },
+    { hex: '#f97316', rgb: '249, 115, 22',  name: 'Naranja' }
+  ];
 
   constructor(private api: ApiService) {}
 
@@ -44,9 +74,26 @@ export class AppComponent implements OnInit {
     }
   }
 
-  // --- Dynamic geometry based on panel count ---
+  // --- Panels filtered by position ---
+  get sidePanels(): PanelState[] {
+    return this.panels.filter(p => p.position === 'side');
+  }
+
+  get topPanel(): PanelState | null {
+    return this.panels.find(p => p.position === 'top') || null;
+  }
+
+  get bottomPanel(): PanelState | null {
+    return this.panels.find(p => p.position === 'bottom') || null;
+  }
+
+  get hasTopBottom(): boolean {
+    return !!(this.topPanel || this.bottomPanel);
+  }
+
+  // --- Dynamic geometry based on SIDE panel count ---
   get faceCount(): number {
-    return this.panels.length || 4;
+    return this.sidePanels.length || 4;
   }
 
   get faceAngle(): number {
@@ -66,8 +113,18 @@ export class AppComponent implements OnInit {
     return `rotateY(${angle}deg) translateZ(${this.cubeTranslateZ}px)`;
   }
 
+  getTopFaceTransform(): string {
+    return `rotateX(90deg) translateZ(${130}px)`;
+  }
+
+  getBottomFaceTransform(): string {
+    return `rotateX(-90deg) translateZ(${130}px)`;
+  }
+
   get activePanel(): PanelState {
-    return this.panels[this.activeFaceIndex] || this.panels[0];
+    if (this.activeFaceType === 'top' && this.topPanel) return this.topPanel;
+    if (this.activeFaceType === 'bottom' && this.bottomPanel) return this.bottomPanel;
+    return this.sidePanels[this.activeFaceIndex] || this.sidePanels[0] || this.panels[0];
   }
 
   hasActivePanel(): boolean {
@@ -80,6 +137,8 @@ export class AppComponent implements OnInit {
       next: (data) => {
         this.panels = data.map(p => ({
           ...p,
+          position: p.position || 'side',
+          order: p.order || 0,
           active: false,
           editingIndex: null,
           editValue: ''
@@ -109,29 +168,76 @@ export class AppComponent implements OnInit {
     }
   }
 
-  // --- Cube Interaction ---
+  // --- Cube Interaction (horizontal + vertical) ---
   onPointerDown(e: MouseEvent | TouchEvent) {
     const target = e.target as HTMLElement;
     if (target.closest('.side-task-wrapper') || target.closest('.site-header') || target.closest('.btn-logout')) return;
     this.isDragging = true;
     this.startX = this.getClientX(e);
-    this.startRotation = this.currentRotation;
+    this.startY = this.getClientY(e);
+    this.startRotationY = this.currentRotationY;
+    this.startRotationX = this.currentRotationX;
+    this.dragAxis = 'none';
   }
 
   onPointerMove(e: MouseEvent | TouchEvent) {
     if (!this.isDragging) return;
     const x = this.getClientX(e);
+    const y = this.getClientY(e);
     const deltaX = x - this.startX;
-    this.currentRotation = this.startRotation + deltaX * 0.4;
+    const deltaY = y - this.startY;
+
+    // Determine drag axis on first significant movement
+    if (this.dragAxis === 'none') {
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+        this.dragAxis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+      } else {
+        return;
+      }
+    }
+
+    if (this.dragAxis === 'horizontal') {
+      this.currentRotationY = this.startRotationY + deltaX * 0.4;
+    } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
+      let newRotX = this.startRotationX - deltaY * 0.4;
+      // Clamp vertical rotation
+      newRotX = Math.max(-90, Math.min(90, newRotX));
+      this.currentRotationX = newRotX;
+    }
   }
 
   onPointerUp() {
     if (!this.isDragging) return;
     this.isDragging = false;
-    // Snap to nearest face angle
-    const snapAngle = Math.round(this.currentRotation / this.faceAngle) * this.faceAngle;
-    this.currentRotation = snapAngle;
-    this.updateActiveFace();
+
+    if (this.dragAxis === 'horizontal') {
+      // Snap to nearest side face
+      const snapAngle = Math.round(this.currentRotationY / this.faceAngle) * this.faceAngle;
+      this.currentRotationY = snapAngle;
+      this.updateActiveFace();
+    } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
+      // Snap to top, center, or bottom
+      this.snapVertical();
+    }
+
+    this.dragAxis = 'none';
+  }
+
+  snapVertical() {
+    const rotX = this.currentRotationX;
+    if (rotX < -50 && this.topPanel) {
+      // Show top face
+      this.currentRotationX = -90;
+      this.activeFaceType = 'top';
+    } else if (rotX > 50 && this.bottomPanel) {
+      // Show bottom face
+      this.currentRotationX = 90;
+      this.activeFaceType = 'bottom';
+    } else {
+      // Show side faces
+      this.currentRotationX = -15;
+      this.activeFaceType = 'side';
+    }
   }
 
   getClientX(e: MouseEvent | TouchEvent): number {
@@ -144,31 +250,67 @@ export class AppComponent implements OnInit {
     return e.changedTouches ? e.changedTouches[0].clientX : 0;
   }
 
+  getClientY(e: MouseEvent | TouchEvent): number {
+    if (e instanceof MouseEvent) {
+      return e.clientY;
+    }
+    if (e.touches && e.touches.length > 0) {
+      return e.touches[0].clientY;
+    }
+    return e.changedTouches ? e.changedTouches[0].clientY : 0;
+  }
+
   updateActiveFace() {
-    let normalizedRotation = Math.round(this.currentRotation) % 360;
+    let normalizedRotation = Math.round(this.currentRotationY) % 360;
     if (normalizedRotation > 0) normalizedRotation -= 360;
     let faceIndex = Math.round(-normalizedRotation / this.faceAngle) % this.faceCount;
     if (faceIndex < 0) faceIndex += this.faceCount;
     if (faceIndex >= this.faceCount) faceIndex = 0;
     this.activeFaceIndex = faceIndex;
+    this.activeFaceType = 'side';
   }
 
-  onFaceClick(panel: PanelState, index: number) {
-    if (Math.abs(this.currentRotation - this.startRotation) > 5) return;
-    this.rotateToFace(index);
+  onFaceClick(panel: PanelState, index: number, faceType: 'side' | 'top' | 'bottom' = 'side') {
+    if (Math.abs(this.currentRotationY - this.startRotationY) > 5) return;
+    if (Math.abs(this.currentRotationX - this.startRotationX) > 5) return;
+
+    if (faceType === 'side') {
+      this.rotateToFace(index);
+    }
+    this.activeFaceType = faceType;
     this.togglePanel(panel);
   }
 
   rotateToFace(index: number) {
     const targetAngle = -this.faceAngle * index;
-    const curMod = this.currentRotation % 360;
+    const curMod = this.currentRotationY % 360;
     let diff = targetAngle - curMod;
 
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    this.currentRotation += diff;
+    this.currentRotationY += diff;
     this.updateActiveFace();
+  }
+
+  // --- Navigate to top/bottom via buttons ---
+  navigateToTop() {
+    if (!this.topPanel) return;
+    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
+    this.currentRotationX = -90;
+    this.activeFaceType = 'top';
+  }
+
+  navigateToBottom() {
+    if (!this.bottomPanel) return;
+    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
+    this.currentRotationX = 90;
+    this.activeFaceType = 'bottom';
+  }
+
+  navigateToSides() {
+    this.currentRotationX = -15;
+    this.activeFaceType = 'side';
   }
 
   // --- Editing tasks (now synced with backend) ---
@@ -241,6 +383,104 @@ export class AppComponent implements OnInit {
     event.stopPropagation();
   }
 
+  // --- Add Panel Modal ---
+  openAddModal() {
+    this.newPanelName = '';
+    this.newPanelIcon = '📋';
+    this.newPanelColor = '#10b981';
+    this.newPanelColorRgb = '16, 185, 129';
+    this.newPanelPosition = 'side';
+    this.showAddModal = true;
+  }
+
+  closeAddModal() {
+    this.showAddModal = false;
+  }
+
+  selectIcon(icon: string) {
+    this.newPanelIcon = icon;
+  }
+
+  selectColor(color: { hex: string; rgb: string }) {
+    this.newPanelColor = color.hex;
+    this.newPanelColorRgb = color.rgb;
+  }
+
+  canAddPosition(pos: 'side' | 'top' | 'bottom'): boolean {
+    if (pos === 'side') return true;
+    if (pos === 'top') return !this.topPanel;
+    if (pos === 'bottom') return !this.bottomPanel;
+    return true;
+  }
+
+  createPanel() {
+    if (!this.newPanelName.trim()) return;
+
+    const panelId = this.newPanelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const newOrder = this.panels.length;
+
+    this.api.createPanel({
+      id: panelId,
+      name: this.newPanelName.trim(),
+      color: this.newPanelColor,
+      colorRgb: this.newPanelColorRgb,
+      icon: this.newPanelIcon,
+      todos: [],
+      position: this.newPanelPosition,
+      order: newOrder
+    }).subscribe({
+      next: (created) => {
+        this.panels.push({
+          ...created,
+          active: false,
+          editingIndex: null,
+          editValue: ''
+        });
+        this.closeAddModal();
+      },
+      error: (err) => console.error('Error creando panel:', err)
+    });
+  }
+
+  // --- Delete Panel ---
+  confirmDeletePanel(panel: PanelState, event: Event) {
+    event.stopPropagation();
+    this.panelToDelete = panel;
+    this.showDeleteConfirm = true;
+  }
+
+  cancelDelete() {
+    this.showDeleteConfirm = false;
+    this.panelToDelete = null;
+  }
+
+  executeDelete() {
+    if (!this.panelToDelete || !this.panelToDelete._id) return;
+
+    this.api.deletePanel(this.panelToDelete._id).subscribe({
+      next: () => {
+        this.panels = this.panels.filter(p => p._id !== this.panelToDelete!._id);
+        this.showDeleteConfirm = false;
+        this.panelToDelete = null;
+        // Reset cube rotation
+        this.currentRotationY = 0;
+        this.activeFaceIndex = 0;
+        if (this.activeFaceType !== 'side') {
+          // If deleted top/bottom, go back to sides
+          if ((this.activeFaceType === 'top' && !this.topPanel) ||
+              (this.activeFaceType === 'bottom' && !this.bottomPanel)) {
+            this.navigateToSides();
+          }
+        }
+      },
+      error: (err) => {
+        console.error('Error eliminando panel:', err);
+        this.showDeleteConfirm = false;
+        this.panelToDelete = null;
+      }
+    });
+  }
+
   // --- Login ---
   login() {
     this.api.login(this.loginUsername, this.loginPassword).subscribe({
@@ -265,7 +505,9 @@ export class AppComponent implements OnInit {
     this.currentUserName = '';
     this.panels = [];
     this.loaded = false;
-    this.currentRotation = 0;
+    this.currentRotationY = 0;
+    this.currentRotationX = -15;
     this.activeFaceIndex = 0;
+    this.activeFaceType = 'side';
   }
 }

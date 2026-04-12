@@ -11,6 +11,8 @@ export interface PanelData {
   colorRgb: string;
   icon: string;
   todos: string[];
+  position: 'side' | 'top' | 'bottom';
+  order: number;
 }
 
 export interface LoginResponse {

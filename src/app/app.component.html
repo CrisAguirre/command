@@ -32,6 +32,33 @@
 
 <!-- 3D Cube Scene -->
 <div class="dashboard scene-3d" *ngIf="loaded" [class.panel-open]="hasActivePanel()">
+  
+  <!-- Vertical navigation arrows (only if top/bottom exist) -->
+  <div class="vertical-nav" *ngIf="hasTopBottom">
+    <button class="nav-arrow nav-up" 
+            (click)="navigateToTop()" 
+            [class.active]="activeFaceType === 'top'"
+            [disabled]="!topPanel"
+            title="Cara superior">
+      <span>▲</span>
+      <small *ngIf="topPanel">{{ topPanel.icon }}</small>
+    </button>
+    <button class="nav-arrow nav-center" 
+            (click)="navigateToSides()"
+            [class.active]="activeFaceType === 'side'"
+            title="Caras laterales">
+      <span>◆</span>
+    </button>
+    <button class="nav-arrow nav-down" 
+            (click)="navigateToBottom()"
+            [class.active]="activeFaceType === 'bottom'"
+            [disabled]="!bottomPanel"
+            title="Cara inferior">
+      <span>▼</span>
+      <small *ngIf="bottomPanel">{{ bottomPanel.icon }}</small>
+    </button>
+  </div>
+
   <div class="cube-wrapper"
        [style.width.px]="cubeFaceWidth"
        [style.height.px]="260"
@@ -44,12 +71,13 @@
     
     <div class="cube"
          [class.is-dragging]="isDragging"
-         [style.--rot-y]="currentRotation + 'deg'">
+         [style.--rot-y]="currentRotationY + 'deg'"
+         [style.--rot-x]="currentRotationX + 'deg'">
          
-      <!-- Render project panels on polygon faces -->
-      <div *ngFor="let panel of panels; let i = index"
-           class="cube-face"
-           (click)="onFaceClick(panel, i)"
+      <!-- Render SIDE panels on polygon faces -->
+      <div *ngFor="let panel of sidePanels; let i = index"
+           class="cube-face cube-face-side"
+           (click)="onFaceClick(panel, i, 'side')"
            [style.transform]="getFaceTransform(i)"
            [style.width.px]="cubeFaceWidth"
            [style.--theme-color]="panel.color"
@@ -61,6 +89,43 @@
           <div class="indicator"></div>
           <span class="task-count">{{ panel.todos.length }} tareas</span>
         </div>
+
+        <!-- Delete button on face -->
+        <button class="btn-delete-face" (click)="confirmDeletePanel(panel, $event)" title="Eliminar panel">🗑️</button>
+      </div>
+
+      <!-- TOP face -->
+      <div *ngIf="topPanel"
+           class="cube-face cube-face-cap cube-face-top"
+           (click)="onFaceClick(topPanel, 0, 'top')"
+           [style.transform]="getTopFaceTransform()"
+           [style.width.px]="cubeFaceWidth"
+           [style.--theme-color]="topPanel.color"
+           [style.--theme-rgb]="topPanel.colorRgb">
+        <div class="face-content">
+          <span class="panel-icon">{{ topPanel.icon }}</span>
+          <h2>{{ topPanel.name }}</h2>
+          <div class="indicator"></div>
+          <span class="task-count">{{ topPanel.todos.length }} tareas</span>
+        </div>
+        <button class="btn-delete-face" (click)="confirmDeletePanel(topPanel, $event)" title="Eliminar panel">🗑️</button>
+      </div>
+
+      <!-- BOTTOM face -->
+      <div *ngIf="bottomPanel"
+           class="cube-face cube-face-cap cube-face-bottom"
+           (click)="onFaceClick(bottomPanel, 0, 'bottom')"
+           [style.transform]="getBottomFaceTransform()"
+           [style.width.px]="cubeFaceWidth"
+           [style.--theme-color]="bottomPanel.color"
+           [style.--theme-rgb]="bottomPanel.colorRgb">
+        <div class="face-content">
+          <span class="panel-icon">{{ bottomPanel.icon }}</span>
+          <h2>{{ bottomPanel.name }}</h2>
+          <div class="indicator"></div>
+          <span class="task-count">{{ bottomPanel.todos.length }} tareas</span>
+        </div>
+        <button class="btn-delete-face" (click)="confirmDeletePanel(bottomPanel, $event)" title="Eliminar panel">🗑️</button>
       </div>
     </div>
     
@@ -68,7 +133,7 @@
   
   <!-- Floor Reflection -->
   <div class="floor-reflection"
-       [style.--theme-color]="activePanel.color"
+       [style.--theme-color]="activePanel?.color"
        [style.opacity]="isDragging ? 0.05 : 0.2"></div>
 
   <!-- Side Task Panel (slides out from the side) -->
@@ -112,6 +177,104 @@
 
     </div>
   </ng-container>
+</div>
+
+<!-- Floating Add Panel Button -->
+<button class="fab-add-panel" *ngIf="isLoggedIn && loaded" (click)="openAddModal()" title="Agregar panel">
+  <span>+</span>
+</button>
+
+<!-- Add Panel Modal -->
+<div class="modal-overlay" *ngIf="showAddModal" (click)="closeAddModal()">
+  <div class="modal-content" (click)="stopProp($event)">
+    <div class="modal-header">
+      <h2>Nuevo Panel</h2>
+      <button class="btn-close-modal" (click)="closeAddModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Panel Name -->
+      <div class="modal-field">
+        <label>NOMBRE</label>
+        <input type="text" [(ngModel)]="newPanelName" placeholder="Ej: Mi Proyecto" maxlength="30" (keydown.enter)="createPanel()">
+      </div>
+
+      <!-- Position selector -->
+      <div class="modal-field">
+        <label>POSICIÓN</label>
+        <div class="position-selector">
+          <button [class.selected]="newPanelPosition === 'side'" 
+                  (click)="newPanelPosition = 'side'"
+                  [disabled]="!canAddPosition('side')">
+            ◻ Lateral
+          </button>
+          <button [class.selected]="newPanelPosition === 'top'" 
+                  (click)="newPanelPosition = 'top'"
+                  [disabled]="!canAddPosition('top')">
+            ▲ Superior
+          </button>
+          <button [class.selected]="newPanelPosition === 'bottom'" 
+                  (click)="newPanelPosition = 'bottom'"
+                  [disabled]="!canAddPosition('bottom')">
+            ▼ Inferior
+          </button>
+        </div>
+      </div>
+
+      <!-- Icon picker -->
+      <div class="modal-field">
+        <label>ICONO</label>
+        <div class="icon-picker">
+          <button *ngFor="let icon of availableIcons" 
+                  class="icon-option" 
+                  [class.selected]="newPanelIcon === icon"
+                  (click)="selectIcon(icon)">{{ icon }}</button>
+        </div>
+      </div>
+
+      <!-- Color picker -->
+      <div class="modal-field">
+        <label>COLOR</label>
+        <div class="color-picker">
+          <button *ngFor="let color of availableColors" 
+                  class="color-option" 
+                  [class.selected]="newPanelColor === color.hex"
+                  [style.background]="color.hex"
+                  (click)="selectColor(color)"
+                  [title]="color.name"></button>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div class="panel-preview" [style.border-color]="newPanelColor">
+        <span class="preview-icon">{{ newPanelIcon }}</span>
+        <span class="preview-name" [style.color]="newPanelColor">{{ newPanelName || 'Nombre del panel' }}</span>
+        <span class="preview-position">{{ newPanelPosition === 'side' ? 'Lateral' : newPanelPosition === 'top' ? 'Superior' : 'Inferior' }}</span>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" (click)="closeAddModal()">Cancelar</button>
+      <button class="btn-create-panel" (click)="createPanel()" [disabled]="!newPanelName.trim()">Crear Panel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+  <div class="modal-content modal-delete" (click)="stopProp($event)">
+    <div class="modal-header">
+      <h2>⚠️ Confirmar Eliminación</h2>
+    </div>
+    <div class="modal-body">
+      <p class="delete-msg">¿Estás seguro de eliminar el panel <strong>"{{ panelToDelete?.name }}"</strong>?</p>
+      <p class="delete-warning">Esta acción no se puede deshacer. Se eliminarán todas las tareas asociadas.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" (click)="cancelDelete()">Cancelar</button>
+      <button class="btn-delete-confirm" (click)="executeDelete()">Eliminar</button>
+    </div>
+  </div>
 </div>
 
 <!-- Dashboard Footer -->
