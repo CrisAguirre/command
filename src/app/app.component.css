@@ -59,6 +59,18 @@
   gap: 60px;
 }
 
+/* ---------- GALAXY BACKGROUND ---------- */
+.starfield-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
+  background: transparent;
+}
+
 /* ---------- VERTICAL NAVIGATION ---------- */
 .vertical-nav {
   position: absolute;

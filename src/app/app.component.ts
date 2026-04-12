@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { ApiService, PanelData } from './api.service';
 
 export interface PanelState extends PanelData {
@@ -7,12 +7,29 @@ export interface PanelState extends PanelData {
   editValue: string;
 }
 
+interface Star {
+  x: number;
+  y: number;
+  size: number;
+  opacity: number;
+  twinkleSpeed: number;
+  twinklePhase: number;
+  driftX: number;
+  driftY: number;
+  color: string;
+}
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })
-export class AppComponent implements OnInit {
+
+export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('starfieldCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
+  private stars: Star[] = [];
+  private animFrameId: number = 0;
+  private resizeHandler = () => this.resizeCanvas();
   panels: PanelState[] = [];
   loaded = false;
 
@@ -71,6 +88,133 @@ export class AppComponent implements OnInit {
         this.isLoggedIn = true;
         this.loadPanels();
       }
+    }
+  }
+
+  ngAfterViewInit() {
+    if (this.isLoggedIn) {
+      this.initStarfield();
+    }
+  }
+
+  ngOnDestroy() {
+    this.destroyStarfield();
+  }
+
+  private initStarfield() {
+    setTimeout(() => {
+      if (!this.canvasRef) return;
+      const canvas = this.canvasRef.nativeElement;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      this.resizeCanvas();
+      window.addEventListener('resize', this.resizeHandler);
+      this.createStars(canvas.width, canvas.height);
+      this.animateStarfield(ctx, canvas);
+    }, 100);
+  }
+
+  private destroyStarfield() {
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = 0;
+    }
+    window.removeEventListener('resize', this.resizeHandler);
+  }
+
+  private resizeCanvas() {
+    if (!this.canvasRef) return;
+    const canvas = this.canvasRef.nativeElement;
+    canvas.width = window.innerWidth;
+    canvas.height = document.documentElement.scrollHeight || window.innerHeight;
+  }
+
+  private createStars(w: number, h: number) {
+    this.stars = [];
+    // Soft color palette — faint blues, warm whites, gentle purples
+    const colors = [
+      'rgba(180, 200, 255,',   // cool blue-white
+      'rgba(220, 220, 255,',   // lavender white
+      'rgba(255, 240, 220,',   // warm white
+      'rgba(160, 180, 255,',   // soft blue
+      'rgba(200, 170, 255,',   // gentle purple
+      'rgba(255, 255, 255,',   // pure white
+    ];
+    const starCount = Math.min(Math.floor((w * h) / 2800), 450);
+    for (let i = 0; i < starCount; i++) {
+      this.stars.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        size: Math.random() * 1.6 + 0.3,
+        opacity: Math.random() * 0.5 + 0.1,
+        twinkleSpeed: Math.random() * 0.008 + 0.002,
+        twinklePhase: Math.random() * Math.PI * 2,
+        driftX: (Math.random() - 0.5) * 0.08,
+        driftY: (Math.random() - 0.5) * 0.04 - 0.02,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+  }
+
+  private animateStarfield(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle nebula glow patches
+      this.drawNebula(ctx, canvas);
+
+      // Draw stars
+      for (const star of this.stars) {
+        star.twinklePhase += star.twinkleSpeed;
+        const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
+        const alpha = star.opacity * twinkle;
+
+        // Drift movement
+        star.x += star.driftX;
+        star.y += star.driftY;
+
+        // Wrap around edges
+        if (star.x < -2) star.x = canvas.width + 2;
+        if (star.x > canvas.width + 2) star.x = -2;
+        if (star.y < -2) star.y = canvas.height + 2;
+        if (star.y > canvas.height + 2) star.y = -2;
+
+        // Draw star with soft glow
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fillStyle = star.color + alpha.toFixed(3) + ')';
+        ctx.fill();
+
+        // Soft glow for larger stars
+        if (star.size > 1.0) {
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.size * 3, 0, Math.PI * 2);
+          ctx.fillStyle = star.color + (alpha * 0.08).toFixed(3) + ')';
+          ctx.fill();
+        }
+      }
+
+      this.animFrameId = requestAnimationFrame(render);
+    };
+    this.animFrameId = requestAnimationFrame(render);
+  }
+
+  private drawNebula(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+    // Very subtle nebula patches to simulate galactic dust
+    const time = Date.now() * 0.00003;
+    const patches = [
+      { x: canvas.width * 0.25, y: canvas.height * 0.3, r: 200, color: '80, 100, 200' },
+      { x: canvas.width * 0.7, y: canvas.height * 0.6, r: 250, color: '120, 80, 160' },
+      { x: canvas.width * 0.5, y: canvas.height * 0.8, r: 180, color: '60, 120, 140' },
+    ];
+    for (const p of patches) {
+      const breathe = Math.sin(time + p.x * 0.01) * 0.008 + 0.025;
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+      grad.addColorStop(0, `rgba(${p.color}, ${breathe})`);
+      grad.addColorStop(1, `rgba(${p.color}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
     }
   }
 
@@ -489,6 +633,8 @@ export class AppComponent implements OnInit {
         this.currentUserName = response.user.username;
         this.isLoggedIn = true;
         this.loginError = false;
+        // Initialize starfield after login view renders
+        setTimeout(() => this.initStarfield(), 200);
         this.loadPanels();
       },
       error: () => {
