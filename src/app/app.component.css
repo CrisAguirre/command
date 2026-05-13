@@ -1104,3 +1104,210 @@
   color: #fff;
   box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
 }
+/* ════════════════════════════════════════════════════════
+   PRELOADERS & LOADING STATES  —  agregar al final de
+   app.component.css  (o reemplazar el archivo completo)
+   ════════════════════════════════════════════════════════ */
+
+/* ── Spinner base (anillo giratorio) ────────────────────── */
+.spinner-ring {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner-ring--small {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Fila con spinner + texto ───────────────────────────── */
+.btn-spinner-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ════════════════════════════════════════════════════════
+   BARRA DE ESTADO DEL SERVIDOR (login)
+   ════════════════════════════════════════════════════════ */
+.server-status-bar {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 0.78rem;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 0.4s, background 0.4s;
+}
+
+.server-status-bar.waking {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.06);
+  color: #f59e0b;
+}
+
+.server-status-bar.ready {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.06);
+  color: #10b981;
+}
+
+.server-status-bar.error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+  color: #ef4444;
+}
+
+/* Punto de estado pulsante */
+.server-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.server-status-bar.waking .server-status-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* Barra de progreso indeterminada (mientras despierta) */
+.server-waking-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+  animation: slide-bar 1.6s linear infinite;
+}
+
+@keyframes slide-bar {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
+}
+
+/* Hint de wake-up */
+.wake-hint {
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.35);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ════════════════════════════════════════════════════════
+   PANTALLA DE CARGA INICIAL DE PANELES
+   ════════════════════════════════════════════════════════ */
+.panels-loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.panels-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Cubo fantasma animado */
+.cube-ghost {
+  width: 60px;
+  height: 60px;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: ghost-rotate 2s linear infinite;
+}
+
+.ghost-face {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(16,185,129,0.35);
+  border-radius: 4px;
+  background: rgba(16,185,129,0.04);
+}
+
+.ghost-face:nth-child(1) { transform: rotateY(0deg)   translateZ(30px); }
+.ghost-face:nth-child(2) { transform: rotateY(90deg)  translateZ(30px); }
+.ghost-face:nth-child(3) { transform: rotateY(180deg) translateZ(30px); }
+.ghost-face:nth-child(4) { transform: rotateY(270deg) translateZ(30px); }
+
+@keyframes ghost-rotate {
+  from { transform: rotateX(-15deg) rotateY(0deg); }
+  to   { transform: rotateX(-15deg) rotateY(360deg); }
+}
+
+.loading-label {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.45);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: blink-text 1.4s ease-in-out infinite;
+}
+
+@keyframes blink-text {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.9; }
+}
+
+/* ════════════════════════════════════════════════════════
+   SPINNER DE SINCRONIZACIÓN EN EL TASK CARD HEADER
+   ════════════════════════════════════════════════════════ */
+.task-syncing {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 6px;
+  opacity: 0.7;
+}
+
+/* ════════════════════════════════════════════════════════
+   ESTADO DISABLED EN BOTONES CON LOADING
+   ════════════════════════════════════════════════════════ */
+.btn-login:disabled,
+.btn-add:disabled,
+.btn-create-panel:disabled,
+.btn-delete-confirm:disabled,
+.btn-cancel-modal:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Evitar que el botón de login cambie de tamaño con el spinner */
+.btn-login {
+  min-height: 44px;
+}
+
+.btn-add {
+  min-height: 38px;
+}

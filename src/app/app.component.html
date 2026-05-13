@@ -3,21 +3,41 @@
   <div class="login-box">
     <h1 class="site-title">⚡ Command Center</h1>
     <p class="login-subtitle">AUTH REQUIRED</p>
-    
+
+    <!-- ── Indicador de estado del servidor (wake-up) ── -->
+    <div class="server-status-bar" [class.waking]="serverStatus === 'waking'" [class.ready]="serverStatus === 'ready'" [class.error]="serverStatus === 'error'" *ngIf="serverStatus !== 'unknown'">
+      <span class="server-status-dot"></span>
+      <span class="server-status-text">{{ serverStatusLabel }}</span>
+      <!-- Barra de progreso animada mientras despierta -->
+      <div class="server-waking-bar" *ngIf="serverStatus === 'waking'"></div>
+    </div>
+
     <div class="login-form">
       <div class="form-group">
         <label>USERNAME</label>
-        <input type="text" [(ngModel)]="loginUsername" placeholder="Ingrese su usuario" (keyup.enter)="login()">
+        <input type="text" [(ngModel)]="loginUsername" placeholder="Ingrese su usuario" (keyup.enter)="login()" [disabled]="loadingLogin">
       </div>
       
       <div class="form-group">
         <label>PASSWORD</label>
-        <input type="password" [(ngModel)]="loginPassword" placeholder="Ingrese su contraseña" (keyup.enter)="login()">
+        <input type="password" [(ngModel)]="loginPassword" placeholder="Ingrese su contraseña" (keyup.enter)="login()" [disabled]="loadingLogin">
       </div>
       
       <div class="error-msg" *ngIf="loginError">Access Denied. Invalid credentials.</div>
       
-      <button class="btn-login" (click)="login()">INITIALIZE LINK</button>
+      <!-- Botón con spinner de login -->
+      <button class="btn-login" (click)="login()" [disabled]="loadingLogin || isServerWaking">
+        <span *ngIf="!loadingLogin">INITIALIZE LINK</span>
+        <span *ngIf="loadingLogin" class="btn-spinner-row">
+          <span class="spinner-ring"></span>
+          AUTHENTICATING…
+        </span>
+      </button>
+
+      <!-- Mensaje cuando el servidor aún está despertando -->
+      <p class="wake-hint" *ngIf="isServerWaking">
+        El servidor está despertando, por favor espera un momento…
+      </p>
     </div>
   </div>
 </div>
@@ -33,6 +53,19 @@
   <h1 class="site-title">⚡ Command Center</h1>
   <span class="user-badge">{{ currentUserName }}</span>
 </header>
+
+<!-- ── Preloader mientras cargan los paneles iniciales ── -->
+<div class="panels-loading-screen" *ngIf="!loaded">
+  <div class="panels-loader">
+    <div class="cube-ghost">
+      <div class="ghost-face"></div>
+      <div class="ghost-face"></div>
+      <div class="ghost-face"></div>
+      <div class="ghost-face"></div>
+    </div>
+    <p class="loading-label">Cargando paneles…</p>
+  </div>
+</div>
 
 <!-- 3D Cube Scene -->
 <div class="dashboard scene-3d" *ngIf="loaded" [class.panel-open]="hasActivePanel()">
@@ -151,6 +184,12 @@
         <div class="task-card-header">
           <span class="task-card-icon">{{ panel.icon }}</span>
           <h3>{{ panel.name }}</h3>
+
+          <!-- ── Spinner de tarea en proceso (add / delete / edit) ── -->
+          <span class="task-syncing" *ngIf="processingTaskPanelId === panel._id" title="Sincronizando…">
+            <span class="spinner-ring spinner-ring--small"></span>
+          </span>
+
           <button class="btn-close" (click)="togglePanel(panel)">✕</button>
         </div>
 
@@ -176,7 +215,14 @@
           </ul>
         </div>
 
-        <button class="btn-add" (click)="addTask(panel)">+ Agregar tarea</button>
+        <!-- Botón agregar con estado de loading -->
+        <button class="btn-add" (click)="addTask(panel)" [disabled]="processingTaskPanelId === panel._id">
+          <span *ngIf="processingTaskPanelId !== panel._id">+ Agregar tarea</span>
+          <span *ngIf="processingTaskPanelId === panel._id" class="btn-spinner-row">
+            <span class="spinner-ring spinner-ring--small"></span>
+            Guardando…
+          </span>
+        </button>
       </div>
 
     </div>
@@ -200,7 +246,7 @@
       <!-- Panel Name -->
       <div class="modal-field">
         <label>NOMBRE</label>
-        <input type="text" [(ngModel)]="newPanelName" placeholder="Ej: Mi Proyecto" maxlength="30" (keydown.enter)="createPanel()">
+        <input type="text" [(ngModel)]="newPanelName" placeholder="Ej: Mi Proyecto" maxlength="30" (keydown.enter)="createPanel()" [disabled]="loadingCreatePanel">
       </div>
 
       <!-- Position selector -->
@@ -258,8 +304,16 @@
     </div>
 
     <div class="modal-footer">
-      <button class="btn-cancel-modal" (click)="closeAddModal()">Cancelar</button>
-      <button class="btn-create-panel" (click)="createPanel()" [disabled]="!newPanelName.trim()">Crear Panel</button>
+      <button class="btn-cancel-modal" (click)="closeAddModal()" [disabled]="loadingCreatePanel">Cancelar</button>
+
+      <!-- Botón crear con spinner -->
+      <button class="btn-create-panel" (click)="createPanel()" [disabled]="!newPanelName.trim() || loadingCreatePanel">
+        <span *ngIf="!loadingCreatePanel">Crear Panel</span>
+        <span *ngIf="loadingCreatePanel" class="btn-spinner-row">
+          <span class="spinner-ring spinner-ring--small"></span>
+          Creando…
+        </span>
+      </button>
     </div>
   </div>
 </div>
@@ -275,8 +329,16 @@
       <p class="delete-warning">Esta acción no se puede deshacer. Se eliminarán todas las tareas asociadas.</p>
     </div>
     <div class="modal-footer">
-      <button class="btn-cancel-modal" (click)="cancelDelete()">Cancelar</button>
-      <button class="btn-delete-confirm" (click)="executeDelete()">Eliminar</button>
+      <button class="btn-cancel-modal" (click)="cancelDelete()" [disabled]="loadingDeletePanel">Cancelar</button>
+
+      <!-- Botón eliminar con spinner -->
+      <button class="btn-delete-confirm" (click)="executeDelete()" [disabled]="loadingDeletePanel">
+        <span *ngIf="!loadingDeletePanel">Eliminar</span>
+        <span *ngIf="loadingDeletePanel" class="btn-spinner-row">
+          <span class="spinner-ring spinner-ring--small"></span>
+          Eliminando…
+        </span>
+      </button>
     </div>
   </div>
 </div>

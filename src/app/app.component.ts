@@ -1,5 +1,6 @@
 import { Component, OnInit, AfterViewInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
-import { ApiService, PanelData } from './api.service';
+import { ApiService, PanelData, ServerStatus } from './api.service';
+import { Subscription } from 'rxjs';
 
 export interface PanelState extends PanelData {
   active: boolean;
@@ -30,12 +31,24 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private stars: Star[] = [];
   private animFrameId: number = 0;
   private resizeHandler = () => this.resizeCanvas();
+  private subs = new Subscription();
+
   panels: PanelState[] = [];
   loaded = false;
 
+  // ─── Loading states (leídos desde el servicio vía Observables) ───
+  serverStatus: ServerStatus = 'unknown';
+  loadingLogin    = false;
+  loadingPanels   = false;
+  loadingCreatePanel = false;
+  loadingDeletePanel = false;
+  loadingTask     = false;
+  // Panel que está procesando una tarea en este momento
+  processingTaskPanelId: string | null = null;
+
   // Cube state
   currentRotationY = 0;
-  currentRotationX = -15; // slight tilt
+  currentRotationX = -15;
   isDragging = false;
   startX = 0;
   startY = 0;
@@ -80,7 +93,19 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   constructor(private api: ApiService) {}
 
   ngOnInit() {
-    // Auto-login if token exists
+    // ── Suscribir a todos los estados de loading ──
+    this.subs.add(this.api.serverStatus$.subscribe(s => this.serverStatus = s));
+    this.subs.add(this.api.loadingLogin$.subscribe(v => this.loadingLogin = v));
+    this.subs.add(this.api.loadingPanels$.subscribe(v => this.loadingPanels = v));
+    this.subs.add(this.api.loadingCreatePanel$.subscribe(v => this.loadingCreatePanel = v));
+    this.subs.add(this.api.loadingDeletePanel$.subscribe(v => this.loadingDeletePanel = v));
+    this.subs.add(this.api.loadingTask$.subscribe(v => this.loadingTask = v));
+
+    // ── WAKE-UP PING: despertar el servidor en cuanto carga la página ──
+    // El usuario todavía no ha escrito nada; mientras teclea, el servidor despierta.
+    this.api.pingServer();
+
+    // Auto-login si ya hay token
     if (this.api.isAuthenticated()) {
       const user = this.api.getStoredUser();
       if (user) {
@@ -99,6 +124,21 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy() {
     this.destroyStarfield();
+    this.subs.unsubscribe();
+  }
+
+  // ─── Helper: texto descriptivo del estado del servidor ───
+  get serverStatusLabel(): string {
+    switch (this.serverStatus) {
+      case 'waking': return '⏳ Conectando servidor…';
+      case 'ready':  return '🟢 Servidor listo';
+      case 'error':  return '🔴 Sin conexión';
+      default:       return '';
+    }
+  }
+
+  get isServerWaking(): boolean {
+    return this.serverStatus === 'waking';
   }
 
   private initStarfield() {
@@ -132,14 +172,13 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private createStars(w: number, h: number) {
     this.stars = [];
-    // Soft color palette — faint blues, warm whites, gentle purples
     const colors = [
-      'rgba(180, 200, 255,',   // cool blue-white
-      'rgba(220, 220, 255,',   // lavender white
-      'rgba(255, 240, 220,',   // warm white
-      'rgba(160, 180, 255,',   // soft blue
-      'rgba(200, 170, 255,',   // gentle purple
-      'rgba(255, 255, 255,',   // pure white
+      'rgba(180, 200, 255,',
+      'rgba(220, 220, 255,',
+      'rgba(255, 240, 220,',
+      'rgba(160, 180, 255,',
+      'rgba(200, 170, 255,',
+      'rgba(255, 255, 255,',
     ];
     const starCount = Math.min(Math.floor((w * h) / 2800), 450);
     for (let i = 0; i < starCount; i++) {
@@ -160,33 +199,21 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private animateStarfield(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Subtle nebula glow patches
       this.drawNebula(ctx, canvas);
-
-      // Draw stars
       for (const star of this.stars) {
         star.twinklePhase += star.twinkleSpeed;
         const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
         const alpha = star.opacity * twinkle;
-
-        // Drift movement
         star.x += star.driftX;
         star.y += star.driftY;
-
-        // Wrap around edges
         if (star.x < -2) star.x = canvas.width + 2;
         if (star.x > canvas.width + 2) star.x = -2;
         if (star.y < -2) star.y = canvas.height + 2;
         if (star.y > canvas.height + 2) star.y = -2;
-
-        // Draw star with soft glow
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fillStyle = star.color + alpha.toFixed(3) + ')';
         ctx.fill();
-
-        // Soft glow for larger stars
         if (star.size > 1.0) {
           ctx.beginPath();
           ctx.arc(star.x, star.y, star.size * 3, 0, Math.PI * 2);
@@ -194,14 +221,12 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
           ctx.fill();
         }
       }
-
       this.animFrameId = requestAnimationFrame(render);
     };
     this.animFrameId = requestAnimationFrame(render);
   }
 
   private drawNebula(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-    // Very subtle nebula patches to simulate galactic dust
     const time = Date.now() * 0.00003;
     const patches = [
       { x: canvas.width * 0.25, y: canvas.height * 0.3, r: 200, color: '80, 100, 200' },
@@ -235,7 +260,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     return !!(this.topPanel || this.bottomPanel);
   }
 
-  // --- Dynamic geometry based on SIDE panel count ---
   get faceCount(): number {
     return this.sidePanels.length || 4;
   }
@@ -312,7 +336,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // --- Cube Interaction (horizontal + vertical) ---
+  // --- Cube Interaction ---
   onPointerDown(e: MouseEvent | TouchEvent) {
     const target = e.target as HTMLElement;
     if (target.closest('.side-task-wrapper') || target.closest('.site-header') || target.closest('.btn-logout')) return;
@@ -330,8 +354,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const y = this.getClientY(e);
     const deltaX = x - this.startX;
     const deltaY = y - this.startY;
-
-    // Determine drag axis on first significant movement
     if (this.dragAxis === 'none') {
       if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
         this.dragAxis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
@@ -339,12 +361,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         return;
       }
     }
-
     if (this.dragAxis === 'horizontal') {
       this.currentRotationY = this.startRotationY + deltaX * 0.4;
     } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
       let newRotX = this.startRotationX - deltaY * 0.4;
-      // Clamp vertical rotation
       newRotX = Math.max(-90, Math.min(90, newRotX));
       this.currentRotationX = newRotX;
     }
@@ -353,54 +373,39 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   onPointerUp() {
     if (!this.isDragging) return;
     this.isDragging = false;
-
     if (this.dragAxis === 'horizontal') {
-      // Snap to nearest side face
       const snapAngle = Math.round(this.currentRotationY / this.faceAngle) * this.faceAngle;
       this.currentRotationY = snapAngle;
       this.updateActiveFace();
     } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
-      // Snap to top, center, or bottom
       this.snapVertical();
     }
-
     this.dragAxis = 'none';
   }
 
   snapVertical() {
     const rotX = this.currentRotationX;
     if (rotX < -50 && this.topPanel) {
-      // Show top face
       this.currentRotationX = -90;
       this.activeFaceType = 'top';
     } else if (rotX > 50 && this.bottomPanel) {
-      // Show bottom face
       this.currentRotationX = 90;
       this.activeFaceType = 'bottom';
     } else {
-      // Show side faces
       this.currentRotationX = -15;
       this.activeFaceType = 'side';
     }
   }
 
   getClientX(e: MouseEvent | TouchEvent): number {
-    if (e instanceof MouseEvent) {
-      return e.clientX;
-    }
-    if (e.touches && e.touches.length > 0) {
-      return e.touches[0].clientX;
-    }
+    if (e instanceof MouseEvent) return e.clientX;
+    if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
     return e.changedTouches ? e.changedTouches[0].clientX : 0;
   }
 
   getClientY(e: MouseEvent | TouchEvent): number {
-    if (e instanceof MouseEvent) {
-      return e.clientY;
-    }
-    if (e.touches && e.touches.length > 0) {
-      return e.touches[0].clientY;
-    }
+    if (e instanceof MouseEvent) return e.clientY;
+    if (e.touches && e.touches.length > 0) return e.touches[0].clientY;
     return e.changedTouches ? e.changedTouches[0].clientY : 0;
   }
 
@@ -417,7 +422,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   onFaceClick(panel: PanelState, index: number, faceType: 'side' | 'top' | 'bottom' = 'side') {
     if (Math.abs(this.currentRotationY - this.startRotationY) > 5) return;
     if (Math.abs(this.currentRotationX - this.startRotationX) > 5) return;
-
     if (faceType === 'side') {
       this.rotateToFace(index);
     }
@@ -429,15 +433,12 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const targetAngle = -this.faceAngle * index;
     const curMod = this.currentRotationY % 360;
     let diff = targetAngle - curMod;
-
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
-
     this.currentRotationY += diff;
     this.updateActiveFace();
   }
 
-  // --- Navigate to top/bottom via buttons ---
   navigateToTop() {
     if (!this.topPanel) return;
     this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
@@ -457,7 +458,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.activeFaceType = 'side';
   }
 
-  // --- Editing tasks (now synced with backend) ---
+  // --- Editing tasks ---
   startEditing(panel: PanelState, taskIndex: number) {
     panel.editingIndex = taskIndex;
     panel.editValue = panel.todos[taskIndex];
@@ -468,14 +469,15 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       const oldValue = panel.todos[panel.editingIndex];
       const newValue = panel.editValue.trim();
       panel.todos[panel.editingIndex] = newValue;
+      this.processingTaskPanelId = panel._id || null;
 
-      // Sync with backend
       this.api.updateTask(panel._id!, panel.editingIndex, newValue).subscribe({
+        next: () => { this.processingTaskPanelId = null; },
         error: () => {
-          // Revert on error
           if (panel.editingIndex !== null) {
             panel.todos[panel.editingIndex] = oldValue;
           }
+          this.processingTaskPanelId = null;
         }
       });
     }
@@ -490,37 +492,49 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   addTask(panel: PanelState) {
     const newTask = 'Nueva tarea';
+    this.processingTaskPanelId = panel._id || null;
+
+    // Optimistic: agregar placeholder inmediatamente
+    panel.todos.push(newTask);
+    const optimisticIndex = panel.todos.length - 1;
+
     this.api.addTask(panel._id!, newTask).subscribe({
       next: (updated) => {
         panel.todos = updated.todos;
         this.startEditing(panel, panel.todos.length - 1);
+        this.processingTaskPanelId = null;
       },
-      error: (err) => console.error('Error agregando tarea:', err)
+      error: (err) => {
+        console.error('Error agregando tarea:', err);
+        // Revertir optimistic update
+        panel.todos.splice(optimisticIndex, 1);
+        this.processingTaskPanelId = null;
+      }
     });
   }
 
   removeTask(panel: PanelState, taskIndex: number, event: Event) {
     event.stopPropagation();
     const removedTask = panel.todos[taskIndex];
+    this.processingTaskPanelId = panel._id || null;
 
-    this.api.deleteTask(panel._id!, taskIndex).subscribe({
-      next: (updated) => {
-        panel.todos = updated.todos;
-        if (panel.editingIndex === taskIndex) {
-          panel.editingIndex = null;
-        }
-      },
-      error: () => {
-        // Revert on error
-        panel.todos.splice(taskIndex, 0, removedTask);
-      }
-    });
-
-    // Optimistic UI update
+    // Optimistic UI update inmediato
     panel.todos.splice(taskIndex, 1);
     if (panel.editingIndex === taskIndex) {
       panel.editingIndex = null;
     }
+
+    this.api.deleteTask(panel._id!, taskIndex).subscribe({
+      next: (updated) => {
+        panel.todos = updated.todos;
+        this.processingTaskPanelId = null;
+      },
+      error: () => {
+        // Revertir
+        panel.todos.splice(taskIndex, 0, removedTask);
+        this.processingTaskPanelId = null;
+      }
+    });
   }
 
   stopProp(event: Event) {
@@ -559,7 +573,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   createPanel() {
     if (!this.newPanelName.trim()) return;
-
     const panelId = this.newPanelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     const newOrder = this.panels.length;
 
@@ -606,11 +619,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         this.panels = this.panels.filter(p => p._id !== this.panelToDelete!._id);
         this.showDeleteConfirm = false;
         this.panelToDelete = null;
-        // Reset cube rotation
         this.currentRotationY = 0;
         this.activeFaceIndex = 0;
         if (this.activeFaceType !== 'side') {
-          // If deleted top/bottom, go back to sides
           if ((this.activeFaceType === 'top' && !this.topPanel) ||
               (this.activeFaceType === 'bottom' && !this.bottomPanel)) {
             this.navigateToSides();
@@ -633,7 +644,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         this.currentUserName = response.user.username;
         this.isLoggedIn = true;
         this.loginError = false;
-        // Initialize starfield after login view renders
         setTimeout(() => this.initStarfield(), 200);
         this.loadPanels();
       },
@@ -655,5 +665,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.currentRotationX = -15;
     this.activeFaceIndex = 0;
     this.activeFaceType = 'side';
+    // Volver a hacer ping cuando el usuario llegue al login de nuevo
+    this.api.pingServer();
   }
 }
