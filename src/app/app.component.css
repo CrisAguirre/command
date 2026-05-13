@@ -1311,3 +1311,12 @@
 .btn-add {
   min-height: 38px;
 }
+
+/* ── Indicador de sincronización silenciosa en header ───────────── */
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 10px;
+  opacity: 0.5;
+}

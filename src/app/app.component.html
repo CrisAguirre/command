@@ -51,6 +51,9 @@
 <!-- Header -->
 <header class="site-header">
   <h1 class="site-title">⚡ Command Center</h1>
+  <span class="sync-indicator" *ngIf="silentRefreshing" title="Actualizando datos…">
+    <span class="spinner-ring spinner-ring--small"></span>
+  </span>
   <span class="user-badge">{{ currentUserName }}</span>
 </header>
 

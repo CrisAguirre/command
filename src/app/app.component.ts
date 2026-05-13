@@ -9,15 +9,9 @@ export interface PanelState extends PanelData {
 }
 
 interface Star {
-  x: number;
-  y: number;
-  size: number;
-  opacity: number;
-  twinkleSpeed: number;
-  twinklePhase: number;
-  driftX: number;
-  driftY: number;
-  color: string;
+  x: number; y: number; size: number; opacity: number;
+  twinkleSpeed: number; twinklePhase: number;
+  driftX: number; driftY: number; color: string;
 }
 
 @Component({
@@ -25,60 +19,54 @@ interface Star {
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })
-
 export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('starfieldCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   private stars: Star[] = [];
-  private animFrameId: number = 0;
+  private animFrameId = 0;
   private resizeHandler = () => this.resizeCanvas();
   private subs = new Subscription();
 
   panels: PanelState[] = [];
   loaded = false;
+  // true mientras recarga en background (ya hay cache visible)
+  silentRefreshing = false;
 
-  // ─── Loading states (leídos desde el servicio vía Observables) ───
+  // Loading states
   serverStatus: ServerStatus = 'unknown';
-  loadingLogin    = false;
-  loadingPanels   = false;
+  loadingLogin       = false;
+  loadingPanels      = false;
   loadingCreatePanel = false;
   loadingDeletePanel = false;
-  loadingTask     = false;
-  // Panel que está procesando una tarea en este momento
+  loadingTask        = false;
   processingTaskPanelId: string | null = null;
 
   // Cube state
   currentRotationY = 0;
   currentRotationX = -15;
   isDragging = false;
-  startX = 0;
-  startY = 0;
-  startRotationY = 0;
-  startRotationX = 0;
+  startX = 0; startY = 0;
+  startRotationY = 0; startRotationX = 0;
   dragAxis: 'none' | 'horizontal' | 'vertical' = 'none';
   activeFaceIndex = 0;
   activeFaceType: 'side' | 'top' | 'bottom' = 'side';
 
   // Login state
   isLoggedIn = false;
-  loginUsername = '';
-  loginPassword = '';
+  loginUsername = ''; loginPassword = '';
   loginError = false;
   currentUserName = '';
 
   // Add panel modal
   showAddModal = false;
-  newPanelName = '';
-  newPanelIcon = '📋';
-  newPanelColor = '#10b981';
-  newPanelColorRgb = '16, 185, 129';
+  newPanelName = ''; newPanelIcon = '📋';
+  newPanelColor = '#10b981'; newPanelColorRgb = '16, 185, 129';
   newPanelPosition: 'side' | 'top' | 'bottom' = 'side';
 
   // Delete confirmation
   showDeleteConfirm = false;
   panelToDelete: PanelState | null = null;
 
-  // Emoji picker
-  availableIcons = ['📋', '📚', '💼', '🎯', '🔍', '📝', '💰', '💪', '🥗', '🎂', '💬', '🖥️', '🚀', '⚡', '🎮', '🎨', '🎵', '📱', '🏠', '🛒', '📊', '⏰', '🔧', '🌟', '❤️', '🧠'];
+  availableIcons = ['📋','📚','💼','🎯','🔍','📝','💰','💪','🥗','🎂','💬','🖥️','🚀','⚡','🎮','🎨','🎵','📱','🏠','🛒','📊','⏰','🔧','🌟','❤️','🧠'];
   availableColors = [
     { hex: '#10b981', rgb: '16, 185, 129',  name: 'Esmeralda' },
     { hex: '#3b82f6', rgb: '59, 130, 246',  name: 'Azul' },
@@ -93,7 +81,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   constructor(private api: ApiService) {}
 
   ngOnInit() {
-    // ── Suscribir a todos los estados de loading ──
     this.subs.add(this.api.serverStatus$.subscribe(s => this.serverStatus = s));
     this.subs.add(this.api.loadingLogin$.subscribe(v => this.loadingLogin = v));
     this.subs.add(this.api.loadingPanels$.subscribe(v => this.loadingPanels = v));
@@ -101,11 +88,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.subs.add(this.api.loadingDeletePanel$.subscribe(v => this.loadingDeletePanel = v));
     this.subs.add(this.api.loadingTask$.subscribe(v => this.loadingTask = v));
 
-    // ── WAKE-UP PING: despertar el servidor en cuanto carga la página ──
-    // El usuario todavía no ha escrito nada; mientras teclea, el servidor despierta.
     this.api.pingServer();
 
-    // Auto-login si ya hay token
     if (this.api.isAuthenticated()) {
       const user = this.api.getStoredUser();
       if (user) {
@@ -117,9 +101,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit() {
-    if (this.isLoggedIn) {
-      this.initStarfield();
-    }
+    if (this.isLoggedIn) this.initStarfield();
   }
 
   ngOnDestroy() {
@@ -127,7 +109,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.subs.unsubscribe();
   }
 
-  // ─── Helper: texto descriptivo del estado del servidor ───
   get serverStatusLabel(): string {
     switch (this.serverStatus) {
       case 'waking': return '⏳ Conectando servidor…';
@@ -137,377 +118,170 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  get isServerWaking(): boolean {
-    return this.serverStatus === 'waking';
-  }
+  get isServerWaking(): boolean { return this.serverStatus === 'waking'; }
 
-  private initStarfield() {
-    setTimeout(() => {
-      if (!this.canvasRef) return;
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+  // ══════════════════════════════════════════════════════════════════
+  // CARGA DE PANELES — estrategia cache-first
+  // ══════════════════════════════════════════════════════════════════
+  loadPanels() {
+    const cached = this.api.getCache();
 
-      this.resizeCanvas();
-      window.addEventListener('resize', this.resizeHandler);
-      this.createStars(canvas.width, canvas.height);
-      this.animateStarfield(ctx, canvas);
-    }, 100);
-  }
+    if (cached && cached.length > 0) {
+      // 1. Mostrar cache inmediatamente → usuario ve datos al instante
+      this.panels = this.mapPanels(cached);
+      this.loaded = true;
+      this.silentRefreshing = true; // indicador sutil en header
 
-  private destroyStarfield() {
-    if (this.animFrameId) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = 0;
-    }
-    window.removeEventListener('resize', this.resizeHandler);
-  }
+      // 2. Refrescar en background sin bloquear la UI
+      this.api.getPanels().subscribe({
+        next: (fresh) => {
+          this.panels = this.mapPanels(fresh);
+          this.silentRefreshing = false;
+        },
+        error: (err) => {
+          this.silentRefreshing = false;
+          if (err.status === 401) this.logout();
+        }
+      });
 
-  private resizeCanvas() {
-    if (!this.canvasRef) return;
-    const canvas = this.canvasRef.nativeElement;
-    canvas.width = window.innerWidth;
-    canvas.height = document.documentElement.scrollHeight || window.innerHeight;
-  }
-
-  private createStars(w: number, h: number) {
-    this.stars = [];
-    const colors = [
-      'rgba(180, 200, 255,',
-      'rgba(220, 220, 255,',
-      'rgba(255, 240, 220,',
-      'rgba(160, 180, 255,',
-      'rgba(200, 170, 255,',
-      'rgba(255, 255, 255,',
-    ];
-    const starCount = Math.min(Math.floor((w * h) / 2800), 450);
-    for (let i = 0; i < starCount; i++) {
-      this.stars.push({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        size: Math.random() * 1.6 + 0.3,
-        opacity: Math.random() * 0.5 + 0.1,
-        twinkleSpeed: Math.random() * 0.008 + 0.002,
-        twinklePhase: Math.random() * Math.PI * 2,
-        driftX: (Math.random() - 0.5) * 0.08,
-        driftY: (Math.random() - 0.5) * 0.04 - 0.02,
-        color: colors[Math.floor(Math.random() * colors.length)]
+    } else {
+      // Sin cache: carga normal con spinner
+      this.api.getPanels().subscribe({
+        next: (data) => {
+          this.panels = this.mapPanels(data);
+          this.loaded = true;
+        },
+        error: (err) => {
+          if (err.status === 401) this.logout();
+          this.loaded = true;
+        }
       });
     }
   }
 
-  private animateStarfield(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      this.drawNebula(ctx, canvas);
-      for (const star of this.stars) {
-        star.twinklePhase += star.twinkleSpeed;
-        const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
-        const alpha = star.opacity * twinkle;
-        star.x += star.driftX;
-        star.y += star.driftY;
-        if (star.x < -2) star.x = canvas.width + 2;
-        if (star.x > canvas.width + 2) star.x = -2;
-        if (star.y < -2) star.y = canvas.height + 2;
-        if (star.y > canvas.height + 2) star.y = -2;
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-        ctx.fillStyle = star.color + alpha.toFixed(3) + ')';
-        ctx.fill();
-        if (star.size > 1.0) {
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, star.size * 3, 0, Math.PI * 2);
-          ctx.fillStyle = star.color + (alpha * 0.08).toFixed(3) + ')';
-          ctx.fill();
-        }
-      }
-      this.animFrameId = requestAnimationFrame(render);
+  private mapPanels(data: PanelData[]): PanelState[] {
+    return data.map(p => ({
+      ...p,
+      position: p.position || 'side',
+      order: p.order || 0,
+      active: false,
+      editingIndex: null,
+      editValue: ''
+    }));
+  }
+
+  /** Sincroniza el cache local con el estado actual de panels */
+  private syncCache() {
+    this.api.saveCache(this.panels.map(({ active, editingIndex, editValue, ...p }) => p));
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // CREAR PANEL — optimistic UI completo
+  // ══════════════════════════════════════════════════════════════════
+  createPanel() {
+    if (!this.newPanelName.trim()) return;
+
+    const panelId = this.newPanelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const newOrder = this.panels.length;
+
+    // Objeto temporal para mostrar inmediatamente
+    const optimistic: PanelState = {
+      _id: undefined,          // aún no tiene _id real
+      id: panelId,
+      name: this.newPanelName.trim(),
+      color: this.newPanelColor,
+      colorRgb: this.newPanelColorRgb,
+      icon: this.newPanelIcon,
+      todos: [],
+      position: this.newPanelPosition,
+      order: newOrder,
+      active: false,
+      editingIndex: null,
+      editValue: ''
     };
-    this.animFrameId = requestAnimationFrame(render);
-  }
 
-  private drawNebula(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-    const time = Date.now() * 0.00003;
-    const patches = [
-      { x: canvas.width * 0.25, y: canvas.height * 0.3, r: 200, color: '80, 100, 200' },
-      { x: canvas.width * 0.7, y: canvas.height * 0.6, r: 250, color: '120, 80, 160' },
-      { x: canvas.width * 0.5, y: canvas.height * 0.8, r: 180, color: '60, 120, 140' },
-    ];
-    for (const p of patches) {
-      const breathe = Math.sin(time + p.x * 0.01) * 0.008 + 0.025;
-      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
-      grad.addColorStop(0, `rgba(${p.color}, ${breathe})`);
-      grad.addColorStop(1, `rgba(${p.color}, 0)`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
-    }
-  }
+    // 1. Agregar a la UI al instante y cerrar modal
+    this.panels.push(optimistic);
+    this.closeAddModal();
 
-  // --- Panels filtered by position ---
-  get sidePanels(): PanelState[] {
-    return this.panels.filter(p => p.position === 'side');
-  }
-
-  get topPanel(): PanelState | null {
-    return this.panels.find(p => p.position === 'top') || null;
-  }
-
-  get bottomPanel(): PanelState | null {
-    return this.panels.find(p => p.position === 'bottom') || null;
-  }
-
-  get hasTopBottom(): boolean {
-    return !!(this.topPanel || this.bottomPanel);
-  }
-
-  get faceCount(): number {
-    return this.sidePanels.length || 4;
-  }
-
-  get faceAngle(): number {
-    return 360 / this.faceCount;
-  }
-
-  get cubeFaceWidth(): number {
-    return this.faceCount <= 4 ? 260 : 200;
-  }
-
-  get cubeTranslateZ(): number {
-    return this.cubeFaceWidth / (2 * Math.tan(Math.PI / this.faceCount));
-  }
-
-  getFaceTransform(index: number): string {
-    const angle = this.faceAngle * index;
-    return `rotateY(${angle}deg) translateZ(${this.cubeTranslateZ}px)`;
-  }
-
-  getTopFaceTransform(): string {
-    return `rotateX(90deg) translateZ(${130}px)`;
-  }
-
-  getBottomFaceTransform(): string {
-    return `rotateX(-90deg) translateZ(${130}px)`;
-  }
-
-  get activePanel(): PanelState {
-    if (this.activeFaceType === 'top' && this.topPanel) return this.topPanel;
-    if (this.activeFaceType === 'bottom' && this.bottomPanel) return this.bottomPanel;
-    return this.sidePanels[this.activeFaceIndex] || this.sidePanels[0] || this.panels[0];
-  }
-
-  hasActivePanel(): boolean {
-    return this.panels.some(p => p.active);
-  }
-
-  // --- Data loading from API ---
-  loadPanels() {
-    this.api.getPanels().subscribe({
-      next: (data) => {
-        this.panels = data.map(p => ({
-          ...p,
-          position: p.position || 'side',
-          order: p.order || 0,
-          active: false,
-          editingIndex: null,
-          editValue: ''
-        }));
-        this.loaded = true;
+    // 2. Confirmar con backend
+    this.api.createPanel({
+      id: panelId,
+      name: optimistic.name,
+      color: optimistic.color,
+      colorRgb: optimistic.colorRgb,
+      icon: optimistic.icon,
+      todos: [],
+      position: optimistic.position,
+      order: newOrder
+    }).subscribe({
+      next: (created) => {
+        // Reemplazar el optimistic con el objeto real (tiene _id)
+        const idx = this.panels.findIndex(p => p.id === panelId && !p._id);
+        if (idx !== -1) {
+          this.panels[idx] = { ...created, active: false, editingIndex: null, editValue: '' };
+        }
+        this.syncCache();
       },
       error: (err) => {
-        console.error('Error cargando paneles:', err);
-        if (err.status === 401) {
-          this.logout();
-        }
-        this.loaded = true;
+        console.error('Error creando panel:', err);
+        // Revertir: quitar el panel optimistic
+        this.panels = this.panels.filter(p => !(p.id === panelId && !p._id));
       }
     });
   }
 
-  togglePanel(panel: PanelState) {
-    if (panel.active) {
-      panel.active = false;
-      panel.editingIndex = null;
-    } else {
-      this.panels.forEach(p => {
-        p.active = false;
-        p.editingIndex = null;
-      });
-      panel.active = true;
-    }
-  }
+  // ══════════════════════════════════════════════════════════════════
+  // ELIMINAR PANEL — optimistic UI
+  // ══════════════════════════════════════════════════════════════════
+  executeDelete() {
+    if (!this.panelToDelete || !this.panelToDelete._id) return;
 
-  // --- Cube Interaction ---
-  onPointerDown(e: MouseEvent | TouchEvent) {
-    const target = e.target as HTMLElement;
-    if (target.closest('.side-task-wrapper') || target.closest('.site-header') || target.closest('.btn-logout')) return;
-    this.isDragging = true;
-    this.startX = this.getClientX(e);
-    this.startY = this.getClientY(e);
-    this.startRotationY = this.currentRotationY;
-    this.startRotationX = this.currentRotationX;
-    this.dragAxis = 'none';
-  }
+    const deleted = this.panelToDelete;
 
-  onPointerMove(e: MouseEvent | TouchEvent) {
-    if (!this.isDragging) return;
-    const x = this.getClientX(e);
-    const y = this.getClientY(e);
-    const deltaX = x - this.startX;
-    const deltaY = y - this.startY;
-    if (this.dragAxis === 'none') {
-      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-        this.dragAxis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
-      } else {
-        return;
+    // 1. Quitar de UI y cerrar modal al instante
+    this.panels = this.panels.filter(p => p._id !== deleted._id);
+    this.showDeleteConfirm = false;
+    this.panelToDelete = null;
+    this.currentRotationY = 0;
+    this.activeFaceIndex = 0;
+    if (this.activeFaceType === 'top' && !this.topPanel) this.navigateToSides();
+    if (this.activeFaceType === 'bottom' && !this.bottomPanel) this.navigateToSides();
+
+    this.syncCache();
+
+    // 2. Confirmar con backend
+    this.api.deletePanel(deleted._id!).subscribe({
+      error: (err) => {
+        console.error('Error eliminando panel:', err);
+        // Revertir: devolver el panel
+        this.panels.push(deleted);
+        this.panels.sort((a, b) => a.order - b.order);
+        this.syncCache();
       }
-    }
-    if (this.dragAxis === 'horizontal') {
-      this.currentRotationY = this.startRotationY + deltaX * 0.4;
-    } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
-      let newRotX = this.startRotationX - deltaY * 0.4;
-      newRotX = Math.max(-90, Math.min(90, newRotX));
-      this.currentRotationX = newRotX;
-    }
+    });
   }
 
-  onPointerUp() {
-    if (!this.isDragging) return;
-    this.isDragging = false;
-    if (this.dragAxis === 'horizontal') {
-      const snapAngle = Math.round(this.currentRotationY / this.faceAngle) * this.faceAngle;
-      this.currentRotationY = snapAngle;
-      this.updateActiveFace();
-    } else if (this.dragAxis === 'vertical' && this.hasTopBottom) {
-      this.snapVertical();
-    }
-    this.dragAxis = 'none';
-  }
-
-  snapVertical() {
-    const rotX = this.currentRotationX;
-    if (rotX < -50 && this.topPanel) {
-      this.currentRotationX = -90;
-      this.activeFaceType = 'top';
-    } else if (rotX > 50 && this.bottomPanel) {
-      this.currentRotationX = 90;
-      this.activeFaceType = 'bottom';
-    } else {
-      this.currentRotationX = -15;
-      this.activeFaceType = 'side';
-    }
-  }
-
-  getClientX(e: MouseEvent | TouchEvent): number {
-    if (e instanceof MouseEvent) return e.clientX;
-    if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
-    return e.changedTouches ? e.changedTouches[0].clientX : 0;
-  }
-
-  getClientY(e: MouseEvent | TouchEvent): number {
-    if (e instanceof MouseEvent) return e.clientY;
-    if (e.touches && e.touches.length > 0) return e.touches[0].clientY;
-    return e.changedTouches ? e.changedTouches[0].clientY : 0;
-  }
-
-  updateActiveFace() {
-    let normalizedRotation = Math.round(this.currentRotationY) % 360;
-    if (normalizedRotation > 0) normalizedRotation -= 360;
-    let faceIndex = Math.round(-normalizedRotation / this.faceAngle) % this.faceCount;
-    if (faceIndex < 0) faceIndex += this.faceCount;
-    if (faceIndex >= this.faceCount) faceIndex = 0;
-    this.activeFaceIndex = faceIndex;
-    this.activeFaceType = 'side';
-  }
-
-  onFaceClick(panel: PanelState, index: number, faceType: 'side' | 'top' | 'bottom' = 'side') {
-    if (Math.abs(this.currentRotationY - this.startRotationY) > 5) return;
-    if (Math.abs(this.currentRotationX - this.startRotationX) > 5) return;
-    if (faceType === 'side') {
-      this.rotateToFace(index);
-    }
-    this.activeFaceType = faceType;
-    this.togglePanel(panel);
-  }
-
-  rotateToFace(index: number) {
-    const targetAngle = -this.faceAngle * index;
-    const curMod = this.currentRotationY % 360;
-    let diff = targetAngle - curMod;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    this.currentRotationY += diff;
-    this.updateActiveFace();
-  }
-
-  navigateToTop() {
-    if (!this.topPanel) return;
-    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
-    this.currentRotationX = -90;
-    this.activeFaceType = 'top';
-  }
-
-  navigateToBottom() {
-    if (!this.bottomPanel) return;
-    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
-    this.currentRotationX = 90;
-    this.activeFaceType = 'bottom';
-  }
-
-  navigateToSides() {
-    this.currentRotationX = -15;
-    this.activeFaceType = 'side';
-  }
-
-  // --- Editing tasks ---
-  startEditing(panel: PanelState, taskIndex: number) {
-    panel.editingIndex = taskIndex;
-    panel.editValue = panel.todos[taskIndex];
-  }
-
-  confirmEdit(panel: PanelState) {
-    if (panel.editingIndex !== null && panel.editValue.trim()) {
-      const oldValue = panel.todos[panel.editingIndex];
-      const newValue = panel.editValue.trim();
-      panel.todos[panel.editingIndex] = newValue;
-      this.processingTaskPanelId = panel._id || null;
-
-      this.api.updateTask(panel._id!, panel.editingIndex, newValue).subscribe({
-        next: () => { this.processingTaskPanelId = null; },
-        error: () => {
-          if (panel.editingIndex !== null) {
-            panel.todos[panel.editingIndex] = oldValue;
-          }
-          this.processingTaskPanelId = null;
-        }
-      });
-    }
-    panel.editingIndex = null;
-    panel.editValue = '';
-  }
-
-  cancelEdit(panel: PanelState) {
-    panel.editingIndex = null;
-    panel.editValue = '';
-  }
-
+  // ══════════════════════════════════════════════════════════════════
+  // TAREAS — ya eran optimistic, ahora también sincronizan cache
+  // ══════════════════════════════════════════════════════════════════
   addTask(panel: PanelState) {
     const newTask = 'Nueva tarea';
     this.processingTaskPanelId = panel._id || null;
 
-    // Optimistic: agregar placeholder inmediatamente
     panel.todos.push(newTask);
-    const optimisticIndex = panel.todos.length - 1;
+    const idx = panel.todos.length - 1;
 
     this.api.addTask(panel._id!, newTask).subscribe({
       next: (updated) => {
         panel.todos = updated.todos;
         this.startEditing(panel, panel.todos.length - 1);
         this.processingTaskPanelId = null;
+        this.syncCache();
       },
       error: (err) => {
         console.error('Error agregando tarea:', err);
-        // Revertir optimistic update
-        panel.todos.splice(optimisticIndex, 1);
+        panel.todos.splice(idx, 1);
         this.processingTaskPanelId = null;
       }
     });
@@ -518,51 +292,95 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const removedTask = panel.todos[taskIndex];
     this.processingTaskPanelId = panel._id || null;
 
-    // Optimistic UI update inmediato
     panel.todos.splice(taskIndex, 1);
-    if (panel.editingIndex === taskIndex) {
-      panel.editingIndex = null;
-    }
+    if (panel.editingIndex === taskIndex) panel.editingIndex = null;
+    this.syncCache(); // cache se actualiza optimistamente
 
     this.api.deleteTask(panel._id!, taskIndex).subscribe({
       next: (updated) => {
         panel.todos = updated.todos;
         this.processingTaskPanelId = null;
+        this.syncCache();
       },
       error: () => {
-        // Revertir
         panel.todos.splice(taskIndex, 0, removedTask);
         this.processingTaskPanelId = null;
+        this.syncCache();
       }
     });
   }
 
-  stopProp(event: Event) {
-    event.stopPropagation();
+  confirmEdit(panel: PanelState) {
+    if (panel.editingIndex !== null && panel.editValue.trim()) {
+      const oldValue = panel.todos[panel.editingIndex];
+      const newValue = panel.editValue.trim();
+      panel.todos[panel.editingIndex] = newValue;
+      this.processingTaskPanelId = panel._id || null;
+      this.syncCache();
+
+      this.api.updateTask(panel._id!, panel.editingIndex, newValue).subscribe({
+        next: () => { this.processingTaskPanelId = null; },
+        error: () => {
+          if (panel.editingIndex !== null) panel.todos[panel.editingIndex] = oldValue;
+          this.processingTaskPanelId = null;
+          this.syncCache();
+        }
+      });
+    }
+    panel.editingIndex = null;
+    panel.editValue = '';
   }
 
-  // --- Add Panel Modal ---
+  // ══════════════════════════════════════════════════════════════════
+  // RESTO DEL COMPONENTE (sin cambios funcionales)
+  // ══════════════════════════════════════════════════════════════════
+  togglePanel(panel: PanelState) {
+    if (panel.active) {
+      panel.active = false; panel.editingIndex = null;
+    } else {
+      this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
+      panel.active = true;
+    }
+  }
+
+  get sidePanels(): PanelState[] { return this.panels.filter(p => p.position === 'side'); }
+  get topPanel(): PanelState | null { return this.panels.find(p => p.position === 'top') || null; }
+  get bottomPanel(): PanelState | null { return this.panels.find(p => p.position === 'bottom') || null; }
+  get hasTopBottom(): boolean { return !!(this.topPanel || this.bottomPanel); }
+  get faceCount(): number { return this.sidePanels.length || 4; }
+  get faceAngle(): number { return 360 / this.faceCount; }
+  get cubeFaceWidth(): number { return this.faceCount <= 4 ? 260 : 200; }
+  get cubeTranslateZ(): number { return this.cubeFaceWidth / (2 * Math.tan(Math.PI / this.faceCount)); }
+
+  getFaceTransform(i: number): string { return `rotateY(${this.faceAngle * i}deg) translateZ(${this.cubeTranslateZ}px)`; }
+  getTopFaceTransform(): string { return `rotateX(90deg) translateZ(130px)`; }
+  getBottomFaceTransform(): string { return `rotateX(-90deg) translateZ(130px)`; }
+
+  get activePanel(): PanelState {
+    if (this.activeFaceType === 'top' && this.topPanel) return this.topPanel;
+    if (this.activeFaceType === 'bottom' && this.bottomPanel) return this.bottomPanel;
+    return this.sidePanels[this.activeFaceIndex] || this.sidePanels[0] || this.panels[0];
+  }
+
+  hasActivePanel(): boolean { return this.panels.some(p => p.active); }
+
+  startEditing(panel: PanelState, taskIndex: number) {
+    panel.editingIndex = taskIndex;
+    panel.editValue = panel.todos[taskIndex];
+  }
+
+  cancelEdit(panel: PanelState) { panel.editingIndex = null; panel.editValue = ''; }
+  stopProp(e: Event) { e.stopPropagation(); }
+
   openAddModal() {
-    this.newPanelName = '';
-    this.newPanelIcon = '📋';
-    this.newPanelColor = '#10b981';
-    this.newPanelColorRgb = '16, 185, 129';
-    this.newPanelPosition = 'side';
-    this.showAddModal = true;
+    this.newPanelName = ''; this.newPanelIcon = '📋';
+    this.newPanelColor = '#10b981'; this.newPanelColorRgb = '16, 185, 129';
+    this.newPanelPosition = 'side'; this.showAddModal = true;
   }
 
-  closeAddModal() {
-    this.showAddModal = false;
-  }
-
-  selectIcon(icon: string) {
-    this.newPanelIcon = icon;
-  }
-
-  selectColor(color: { hex: string; rgb: string }) {
-    this.newPanelColor = color.hex;
-    this.newPanelColorRgb = color.rgb;
-  }
+  closeAddModal() { this.showAddModal = false; }
+  selectIcon(icon: string) { this.newPanelIcon = icon; }
+  selectColor(c: { hex: string; rgb: string }) { this.newPanelColor = c.hex; this.newPanelColorRgb = c.rgb; }
 
   canAddPosition(pos: 'side' | 'top' | 'bottom'): boolean {
     if (pos === 'side') return true;
@@ -571,72 +389,14 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     return true;
   }
 
-  createPanel() {
-    if (!this.newPanelName.trim()) return;
-    const panelId = this.newPanelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    const newOrder = this.panels.length;
-
-    this.api.createPanel({
-      id: panelId,
-      name: this.newPanelName.trim(),
-      color: this.newPanelColor,
-      colorRgb: this.newPanelColorRgb,
-      icon: this.newPanelIcon,
-      todos: [],
-      position: this.newPanelPosition,
-      order: newOrder
-    }).subscribe({
-      next: (created) => {
-        this.panels.push({
-          ...created,
-          active: false,
-          editingIndex: null,
-          editValue: ''
-        });
-        this.closeAddModal();
-      },
-      error: (err) => console.error('Error creando panel:', err)
-    });
-  }
-
-  // --- Delete Panel ---
   confirmDeletePanel(panel: PanelState, event: Event) {
     event.stopPropagation();
     this.panelToDelete = panel;
     this.showDeleteConfirm = true;
   }
 
-  cancelDelete() {
-    this.showDeleteConfirm = false;
-    this.panelToDelete = null;
-  }
+  cancelDelete() { this.showDeleteConfirm = false; this.panelToDelete = null; }
 
-  executeDelete() {
-    if (!this.panelToDelete || !this.panelToDelete._id) return;
-
-    this.api.deletePanel(this.panelToDelete._id).subscribe({
-      next: () => {
-        this.panels = this.panels.filter(p => p._id !== this.panelToDelete!._id);
-        this.showDeleteConfirm = false;
-        this.panelToDelete = null;
-        this.currentRotationY = 0;
-        this.activeFaceIndex = 0;
-        if (this.activeFaceType !== 'side') {
-          if ((this.activeFaceType === 'top' && !this.topPanel) ||
-              (this.activeFaceType === 'bottom' && !this.bottomPanel)) {
-            this.navigateToSides();
-          }
-        }
-      },
-      error: (err) => {
-        console.error('Error eliminando panel:', err);
-        this.showDeleteConfirm = false;
-        this.panelToDelete = null;
-      }
-    });
-  }
-
-  // --- Login ---
   login() {
     this.api.login(this.loginUsername, this.loginPassword).subscribe({
       next: (response) => {
@@ -647,25 +407,194 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(() => this.initStarfield(), 200);
         this.loadPanels();
       },
-      error: () => {
-        this.loginError = true;
-      }
+      error: () => { this.loginError = true; }
     });
   }
 
   logout() {
-    this.api.clearSession();
+    this.api.clearSession(); // también limpia cache
     this.isLoggedIn = false;
-    this.loginUsername = '';
-    this.loginPassword = '';
+    this.loginUsername = ''; this.loginPassword = '';
     this.currentUserName = '';
-    this.panels = [];
-    this.loaded = false;
-    this.currentRotationY = 0;
-    this.currentRotationX = -15;
-    this.activeFaceIndex = 0;
-    this.activeFaceType = 'side';
-    // Volver a hacer ping cuando el usuario llegue al login de nuevo
+    this.panels = []; this.loaded = false;
+    this.currentRotationY = 0; this.currentRotationX = -15;
+    this.activeFaceIndex = 0; this.activeFaceType = 'side';
+    this.destroyStarfield();
     this.api.pingServer();
+  }
+
+  // ── Cube interaction ──────────────────────────────────────────────
+  onPointerDown(e: MouseEvent | TouchEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest('.side-task-wrapper') || t.closest('.site-header') || t.closest('.btn-logout')) return;
+    this.isDragging = true;
+    this.startX = this.getClientX(e); this.startY = this.getClientY(e);
+    this.startRotationY = this.currentRotationY; this.startRotationX = this.currentRotationX;
+    this.dragAxis = 'none';
+  }
+
+  onPointerMove(e: MouseEvent | TouchEvent) {
+    if (!this.isDragging) return;
+    const dx = this.getClientX(e) - this.startX;
+    const dy = this.getClientY(e) - this.startY;
+    if (this.dragAxis === 'none') {
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5)
+        this.dragAxis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+      else return;
+    }
+    if (this.dragAxis === 'horizontal') this.currentRotationY = this.startRotationY + dx * 0.4;
+    else if (this.dragAxis === 'vertical' && this.hasTopBottom)
+      this.currentRotationX = Math.max(-90, Math.min(90, this.startRotationX - dy * 0.4));
+  }
+
+  onPointerUp() {
+    if (!this.isDragging) return;
+    this.isDragging = false;
+    if (this.dragAxis === 'horizontal') {
+      this.currentRotationY = Math.round(this.currentRotationY / this.faceAngle) * this.faceAngle;
+      this.updateActiveFace();
+    } else if (this.dragAxis === 'vertical' && this.hasTopBottom) this.snapVertical();
+    this.dragAxis = 'none';
+  }
+
+  snapVertical() {
+    const r = this.currentRotationX;
+    if (r < -50 && this.topPanel) { this.currentRotationX = -90; this.activeFaceType = 'top'; }
+    else if (r > 50 && this.bottomPanel) { this.currentRotationX = 90; this.activeFaceType = 'bottom'; }
+    else { this.currentRotationX = -15; this.activeFaceType = 'side'; }
+  }
+
+  getClientX(e: MouseEvent | TouchEvent): number {
+    if (e instanceof MouseEvent) return e.clientX;
+    return e.touches?.length ? e.touches[0].clientX : (e as TouchEvent).changedTouches[0].clientX;
+  }
+
+  getClientY(e: MouseEvent | TouchEvent): number {
+    if (e instanceof MouseEvent) return e.clientY;
+    return e.touches?.length ? e.touches[0].clientY : (e as TouchEvent).changedTouches[0].clientY;
+  }
+
+  updateActiveFace() {
+    let n = Math.round(this.currentRotationY) % 360;
+    if (n > 0) n -= 360;
+    let i = Math.round(-n / this.faceAngle) % this.faceCount;
+    if (i < 0) i += this.faceCount;
+    if (i >= this.faceCount) i = 0;
+    this.activeFaceIndex = i;
+    this.activeFaceType = 'side';
+  }
+
+  onFaceClick(panel: PanelState, index: number, faceType: 'side' | 'top' | 'bottom' = 'side') {
+    if (Math.abs(this.currentRotationY - this.startRotationY) > 5) return;
+    if (Math.abs(this.currentRotationX - this.startRotationX) > 5) return;
+    if (faceType === 'side') this.rotateToFace(index);
+    this.activeFaceType = faceType;
+    this.togglePanel(panel);
+  }
+
+  rotateToFace(index: number) {
+    const target = -this.faceAngle * index;
+    const cur = this.currentRotationY % 360;
+    let diff = target - cur;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    this.currentRotationY += diff;
+    this.updateActiveFace();
+  }
+
+  navigateToTop() {
+    if (!this.topPanel) return;
+    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
+    this.currentRotationX = -90; this.activeFaceType = 'top';
+  }
+
+  navigateToBottom() {
+    if (!this.bottomPanel) return;
+    this.panels.forEach(p => { p.active = false; p.editingIndex = null; });
+    this.currentRotationX = 90; this.activeFaceType = 'bottom';
+  }
+
+  navigateToSides() { this.currentRotationX = -15; this.activeFaceType = 'side'; }
+
+  // ── Starfield ─────────────────────────────────────────────────────
+  private initStarfield() {
+    setTimeout(() => {
+      if (!this.canvasRef) return;
+      const canvas = this.canvasRef.nativeElement;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      this.resizeCanvas();
+      window.addEventListener('resize', this.resizeHandler);
+      this.createStars(canvas.width, canvas.height);
+      this.animateStarfield(ctx, canvas);
+    }, 100);
+  }
+
+  private destroyStarfield() {
+    if (this.animFrameId) { cancelAnimationFrame(this.animFrameId); this.animFrameId = 0; }
+    window.removeEventListener('resize', this.resizeHandler);
+  }
+
+  private resizeCanvas() {
+    if (!this.canvasRef) return;
+    const c = this.canvasRef.nativeElement;
+    c.width = window.innerWidth;
+    c.height = document.documentElement.scrollHeight || window.innerHeight;
+  }
+
+  private createStars(w: number, h: number) {
+    this.stars = [];
+    const colors = ['rgba(180,200,255,','rgba(220,220,255,','rgba(255,240,220,','rgba(160,180,255,','rgba(200,170,255,','rgba(255,255,255,'];
+    const n = Math.min(Math.floor((w * h) / 2800), 450);
+    for (let i = 0; i < n; i++) {
+      this.stars.push({
+        x: Math.random() * w, y: Math.random() * h,
+        size: Math.random() * 1.6 + 0.3, opacity: Math.random() * 0.5 + 0.1,
+        twinkleSpeed: Math.random() * 0.008 + 0.002, twinklePhase: Math.random() * Math.PI * 2,
+        driftX: (Math.random() - 0.5) * 0.08, driftY: (Math.random() - 0.5) * 0.04 - 0.02,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+  }
+
+  private animateStarfield(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      this.drawNebula(ctx, canvas);
+      for (const s of this.stars) {
+        s.twinklePhase += s.twinkleSpeed;
+        const a = s.opacity * (Math.sin(s.twinklePhase) * 0.3 + 0.7);
+        s.x += s.driftX; s.y += s.driftY;
+        if (s.x < -2) s.x = canvas.width + 2;
+        if (s.x > canvas.width + 2) s.x = -2;
+        if (s.y < -2) s.y = canvas.height + 2;
+        if (s.y > canvas.height + 2) s.y = -2;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = s.color + a.toFixed(3) + ')'; ctx.fill();
+        if (s.size > 1.0) {
+          ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2);
+          ctx.fillStyle = s.color + (a * 0.08).toFixed(3) + ')'; ctx.fill();
+        }
+      }
+      this.animFrameId = requestAnimationFrame(render);
+    };
+    this.animFrameId = requestAnimationFrame(render);
+  }
+
+  private drawNebula(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+    const t = Date.now() * 0.00003;
+    const patches = [
+      { x: canvas.width * 0.25, y: canvas.height * 0.3, r: 200, color: '80,100,200' },
+      { x: canvas.width * 0.7,  y: canvas.height * 0.6, r: 250, color: '120,80,160' },
+      { x: canvas.width * 0.5,  y: canvas.height * 0.8, r: 180, color: '60,120,140' },
+    ];
+    for (const p of patches) {
+      const b = Math.sin(t + p.x * 0.01) * 0.008 + 0.025;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+      g.addColorStop(0, `rgba(${p.color},${b})`);
+      g.addColorStop(1, `rgba(${p.color},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+    }
   }
 }
