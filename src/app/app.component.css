@@ -506,17 +506,20 @@
   position: fixed;
   bottom: 90px;
   right: 30px;
-  width: 56px;
+  padding: 0 24px;
   height: 56px;
-  border-radius: 50%;
+  border-radius: 28px;
   background: linear-gradient(135deg, #10b981, #3b82f6);
   border: none;
   color: #fff;
-  font-size: 28px;
+  font-size: 16px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4),
               0 0 40px rgba(16, 185, 129, 0.15);
   transition: all 0.3s ease;

@@ -73,8 +73,8 @@
 <!-- 3D Cube Scene -->
 <div class="dashboard scene-3d" *ngIf="loaded" [class.panel-open]="hasActivePanel()">
   
-  <!-- Vertical navigation arrows (only if top/bottom exist) -->
-  <div class="vertical-nav" *ngIf="hasTopBottom">
+  <!-- Vertical navigation arrows -->
+  <div class="vertical-nav" *ngIf="loaded">
     <button class="nav-arrow nav-up" 
             (click)="navigateToTop()" 
             [class.active]="activeFaceType === 'top'"
@@ -234,7 +234,8 @@
 
 <!-- Floating Add Panel Button -->
 <button class="fab-add-panel" *ngIf="isLoggedIn && loaded" (click)="openAddModal()" title="Agregar panel">
-  <span>+</span>
+  <span class="fab-icon">+</span>
+  <span class="fab-text">Nuevo Panel</span>
 </button>
 
 <!-- Add Panel Modal -->
